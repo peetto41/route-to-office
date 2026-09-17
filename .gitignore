@@ -1,0 +1,20 @@
+# Environment variables — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+coverage/
+*.log
+
+# Nuxt
+.nuxt/
+.output/
+
+# Build tooling
+.turbo/
+
+# OS
+.DS_Store

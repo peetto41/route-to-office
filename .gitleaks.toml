@@ -1,0 +1,21 @@
+title = "route-to-office gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "google-maps-api-key"
+description = "Google API key (used for Maps Platform: Routes, Geocoding, Tiles)"
+regex = '''AIza[0-9A-Za-z\-_]{35}'''
+tags = ["key", "google"]
+
+[allowlist]
+description = "Known-safe placeholders and example files"
+paths = [
+  '''(.*/)?\.env\.example$''',
+  '''(.*/)?assets/env\.example$''',
+]
+regexes = [
+  '''AIza\.\.\.''',
+  '''YOUR_GOOGLE_MAPS_API_KEY''',
+]
