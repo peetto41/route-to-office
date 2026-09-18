@@ -1,0 +1,11 @@
+[build]
+  base = "apps/web"
+  command = "npm run build"
+  # Nuxt's own standard build output (no forced Nitro preset) — Netlify's official
+  # Nuxt Runtime build plugin auto-detects this .output folder and wraps
+  # .output/server into Netlify Functions itself, so SSR + the /api/v1/** proxy
+  # still work at runtime without us forcing NITRO_PRESET=netlify manually.
+  publish = ".output/public"
+
+[build.environment]
+  NODE_VERSION = "22"
