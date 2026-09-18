@@ -27,11 +27,13 @@ export class GeocodeService {
       return cached;
     }
 
-    const result = await this.geocodingService.geocode(address);
+    const results = await this.geocodingService.geocodeMultiple(address);
     const response: GeocodeResponseDto = {
-      lat: result.lat,
-      lng: result.lng,
-      formattedAddress: result.formattedAddress,
+      results: results.map((result) => ({
+        lat: result.lat,
+        lng: result.lng,
+        formattedAddress: result.formattedAddress,
+      })),
     };
     await this.cache.set(key, response, CACHE_TTL_MS);
     return response;

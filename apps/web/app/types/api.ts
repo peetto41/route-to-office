@@ -48,8 +48,17 @@ export interface CompanyResponse {
   lng: number;
 }
 
-export interface GeocodeResponse {
+/** One candidate coordinate returned by `GET /api/v1/geocode`. */
+export interface GeocodeResult {
   lat: number;
   lng: number;
   formattedAddress: string;
+}
+
+/**
+ * `GET /api/v1/geocode` returns up to 5 candidates rather than auto-picking
+ * one — see SKILL.md's "Thailand-only scope" / API contract sections.
+ */
+export interface GeocodeResponse {
+  results: GeocodeResult[];
 }

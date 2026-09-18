@@ -19,5 +19,14 @@ export const ORS_THROTTLE = { limit: 10, ttl: 60_000 };
  * (OSM's usage policy expects reasonable, not unlimited, request volume),
  * just sized for "a browser panning a map" rather than "a user submitting a
  * form."
+ *
+ * An earlier value of 300/min was found live to be too low: zooming out to
+ * view all of Thailand at once (a completely normal interaction, not abuse)
+ * fires enough tile requests across zoom levels/cities to burn through 300
+ * within a single page load, 429-ing legitimate tiles and leaving visible
+ * gaps in the map ("แมพโหลดไม่หมดทั้งประเทศไทย"). The real protection for this
+ * endpoint is the in-memory tile cache and OSM's own usage-policy
+ * expectations, not this number — so size it generously (comfortably in the
+ * four figures per minute) rather than risk reproducing that bug.
  */
-export const TILE_THROTTLE = { limit: 300, ttl: 60_000 };
+export const TILE_THROTTLE = { limit: 2000, ttl: 60_000 };

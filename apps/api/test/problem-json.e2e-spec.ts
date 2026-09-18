@@ -40,6 +40,16 @@ describe('Problem+JSON error shape (e2e)', () => {
     expectProblemJson(response, 400);
   });
 
+  it('shapes a Thailand-bbox validation failure (coordinates outside Thailand) as problem+json 400', async () => {
+    // Well-formed lat/lng (each individually valid per @IsLatitude/
+    // @IsLongitude), but outside Thailand's bounding box — Taipei, not
+    // Bangkok. See SKILL.md's "Thailand-only scope" section.
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/route')
+      .send({ origin: { lat: 25.03, lng: 121.5 } });
+    expectProblemJson(response, 400);
+  });
+
   it('shapes a validation failure with an origin missing both address and coords', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/v1/route')
@@ -66,16 +76,25 @@ describe('Problem+JSON error shape (e2e)', () => {
     expectProblemJson(response, 404);
   });
 
-  it('shapes a geocoding miss (zero results) as problem+json 404', async () => {
+  it("shapes a geocoding miss (zero results) on POST /route's address branch as problem+json 404", async () => {
     const { GeocodeNotFoundException } =
       await import('../src/common/exceptions/upstream-maps.exception');
     mocks.geocodingService.geocode.mockRejectedValueOnce(
       new GeocodeNotFoundException(),
     );
     const response = await request(app.getHttpServer())
+      .post('/api/v1/route')
+      .send({ origin: { address: 'a place that does not exist anywhere' } });
+    expectProblemJson(response, 404);
+  });
+
+  it('returns 200 with an empty results array for a GET /geocode miss (not an error)', async () => {
+    mocks.geocodingService.geocodeMultiple.mockResolvedValueOnce([]);
+    const response = await request(app.getHttpServer())
       .get('/api/v1/geocode')
       .query({ address: 'a place that does not exist anywhere' });
-    expectProblemJson(response, 404);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ results: [] });
   });
 
   it('never includes a stack trace in an error response', async () => {

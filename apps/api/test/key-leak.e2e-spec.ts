@@ -61,6 +61,13 @@ describe('No API-key leak (e2e)', () => {
         lng: 100.5018,
         formattedAddress: '1 Somewhere Rd, Bangkok',
       });
+      mocks.geocodingService.geocodeMultiple.mockResolvedValue([
+        {
+          lat: 13.7563,
+          lng: 100.5018,
+          formattedAddress: '1 Somewhere Rd, Bangkok',
+        },
+      ]);
       mocks.osmTileClient.getTile.mockResolvedValue({
         buffer: Buffer.from('fake-osm-tile-bytes'),
         contentType: 'image/png',

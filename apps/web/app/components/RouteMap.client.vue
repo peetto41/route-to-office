@@ -139,7 +139,16 @@ function flyTo(place: { lat: number; lng: number }): void {
   map.value?.flyTo({ center: [place.lng, place.lat], zoom: 14 });
 }
 
-defineExpose({ flyTo });
+// Exposed so `pages/index.vue` can snap a dragged marker back to its last
+// valid position when the drop point fails the Thailand-bounds check (the
+// drag itself already moved the marker's DOM element before `dragend` fires,
+// and the parent rejects the coordinate without changing `origin`/
+// `destination`, so no prop change would otherwise re-trigger `syncMarkers`).
+function resyncMarkers(): void {
+  syncMarkers();
+}
+
+defineExpose({ flyTo, resyncMarkers });
 
 onMounted(() => {
   if (!mapContainer.value) return;
@@ -158,7 +167,7 @@ onMounted(() => {
 
   map.value.on('load', () => {
     syncMarkers();
-    renderRoute();
+    renderRouteWhenReady();
   });
 });
 
@@ -166,16 +175,44 @@ onBeforeUnmount(() => {
   map.value?.remove();
 });
 
+// Guards against a real race: `props.route` can resolve (e.g. geolocation
+// already granted from a prior visit, so `getCurrentPosition` returns near-
+// instantly) before MapLibre's style is actually ready to accept
+// `addSource`/`addLayer` calls (`map.isStyleLoaded()` false). Previously the
+// route-render watcher just checked `isStyleLoaded()` once and silently
+// dropped the update forever if it was false, so the route line would never
+// appear even though markers and distance/duration (which don't touch the
+// style) rendered fine.
+//
+// Retrying via a one-time `load` listener isn't enough either: `load` fires
+// exactly once per Map instance, but `isStyleLoaded()` can go false again
+// *after* that — e.g. our own `renderRoute()` calling `fitBounds()` pans/
+// zooms the map, which makes the raster tile source start fetching newly-
+// visible tiles again, and `isStyleLoaded()` stays false until they finish.
+// A second route update (changed origin/destination) landing in that window
+// would have no `load` event left to hook onto and would be dropped forever
+// too. `idle` fires every time the map settles — camera stopped, all
+// requested tiles loaded, no pending style diff — repeatedly, for the
+// lifetime of the map, so recursing on `once('idle', ...)` until the style
+// is actually ready is the general fix, not just a fix for the very first
+// occurrence of the race.
+let routeRenderPending = false;
+function renderRouteWhenReady(): void {
+  if (!map.value) return;
+  if (map.value.isStyleLoaded()) {
+    routeRenderPending = false;
+    renderRoute();
+    return;
+  }
+  // Avoid stacking multiple `once('idle', ...)` listeners if this fires
+  // again (e.g. `route` and `bounds` both changing) before the map settles.
+  if (routeRenderPending) return;
+  routeRenderPending = true;
+  map.value.once('idle', renderRouteWhenReady);
+}
+
 watch(() => [props.origin, props.destination], syncMarkers, { deep: true });
-watch(
-  () => [props.route, props.bounds],
-  () => {
-    if (map.value?.isStyleLoaded()) {
-      renderRoute();
-    }
-  },
-  { deep: true },
-);
+watch(() => [props.route, props.bounds], renderRouteWhenReady, { deep: true });
 </script>
 
 <template>

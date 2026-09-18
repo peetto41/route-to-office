@@ -12,11 +12,13 @@ describe('Caching (e2e)', () => {
 
   beforeAll(async () => {
     mocks = createOrsServiceMocks();
-    mocks.geocodingService.geocode.mockResolvedValue({
-      lat: 13.7563,
-      lng: 100.5018,
-      formattedAddress: '1 Somewhere Rd, Bangkok',
-    });
+    mocks.geocodingService.geocodeMultiple.mockResolvedValue([
+      {
+        lat: 13.7563,
+        lng: 100.5018,
+        formattedAddress: '1 Somewhere Rd, Bangkok',
+      },
+    ]);
     app = await buildSuccessTestApp(mocks);
   });
 
@@ -38,7 +40,7 @@ describe('Caching (e2e)', () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(second.body).toEqual(first.body);
-    expect(mocks.geocodingService.geocode).toHaveBeenCalledTimes(1);
+    expect(mocks.geocodingService.geocodeMultiple).toHaveBeenCalledTimes(1);
   });
 
   it('normalizes the address before using it as a cache key', async () => {
@@ -54,6 +56,6 @@ describe('Caching (e2e)', () => {
     // Both requests above resolve to the same normalized cache key as the
     // "Siam Paragon, Bangkok" address already cached in the previous test,
     // so the mock should still have been called exactly once in total.
-    expect(mocks.geocodingService.geocode).toHaveBeenCalledTimes(1);
+    expect(mocks.geocodingService.geocodeMultiple).toHaveBeenCalledTimes(1);
   });
 });

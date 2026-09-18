@@ -7,21 +7,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import type { GeolocationState } from '~/composables/useGeolocation';
-import type { GeocodeResponse, Place } from '~/types/api';
+import { isWithinThailand } from '~/lib/thailand-bounds';
+import type { GeocodeResponse, GeocodeResult, LatLng, Place } from '~/types/api';
 
 /**
  * ONE component for both origin and destination — driven by `role`, not a
  * near-duplicate pair of components, per references/frontend-nuxt.md.
  *
  * The search results list is rendered with plain elements rather than the
- * shadcn-vue `Command` primitive: `GET /api/v1/geocode` resolves a typed
- * address to at most one coordinate (see SKILL.md), it isn't a client-side
- * list to fuzzy-filter — `Command`'s cmdk-style text-containment filtering
- * (matching against each item's own rendered text) would unpredictably hide
- * a valid single server-resolved result whenever the user's query text isn't
- * a literal substring of the resolved formatted address (e.g. searching by
- * a landmark name). `Input` + a manually controlled result panel avoids that
- * mismatch while keeping the same rounded, bordered "search palette" look.
+ * shadcn-vue `Command` primitive: `Command`'s cmdk-style text-containment
+ * filtering (matching against each item's own rendered text) would
+ * unpredictably hide a valid server-resolved candidate whenever the user's
+ * query text isn't a literal substring of its formatted address (e.g.
+ * searching by a landmark name). `Input` + a manually controlled result
+ * panel avoids that mismatch while keeping the same rounded, bordered
+ * "search palette" look.
  */
 
 const props = defineProps<{
@@ -39,38 +39,65 @@ const emit = defineEmits<{
 const isOrigin = computed(() => props.role === 'origin');
 const title = computed(() => (isOrigin.value ? 'จุดเริ่มต้น' : 'จุดหมายปลายทาง'));
 const placeholder = computed(() =>
-  isOrigin.value ? 'พิมพ์ที่อยู่จุดเริ่มต้น...' : 'พิมพ์ที่อยู่จุดหมายปลายทาง...',
+  isOrigin.value
+    ? 'พิมพ์ที่อยู่ หรือพิกัด "13.7563, 100.5018"...'
+    : 'พิมพ์ที่อยู่ หรือพิกัด "13.7563, 100.5018"...',
 );
 
 const query = ref('');
 const searching = ref(false);
-const searchError = ref<'not-found' | 'error' | null>(null);
-const result = ref<GeocodeResponse | null>(null);
+const searchError = ref<'not-found' | 'error' | 'out-of-bounds' | null>(null);
+const results = ref<GeocodeResult[]>([]);
+// Set instead of `results` when the typed text parses as a "lat, lng" pair —
+// this path never calls GET /api/v1/geocode (see references/frontend-nuxt.md's
+// "Address search" section).
+const coordCandidate = ref<LatLng | null>(null);
 
 const showLocationFallback = computed(
   () => isOrigin.value && (props.geoState === 'denied' || props.geoState === 'unavailable'),
 );
 
+// Tolerant of surrounding/inner whitespace around the comma, e.g.
+// "13.7563,100.5018" or "13.7563 , 100.5018".
+const COORDINATE_PATTERN = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
+
+function parseCoordinatePair(value: string): LatLng | null {
+  const match = COORDINATE_PATTERN.exec(value);
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function resetSearchState(): void {
+  searching.value = false;
+  searchError.value = null;
+  results.value = [];
+  coordCandidate.value = null;
+}
+
 const runSearch = useDebounceFn(async (address: string) => {
   const trimmed = address.trim();
   if (trimmed.length < 3) {
-    searching.value = false;
-    searchError.value = null;
-    result.value = null;
+    resetSearchState();
     return;
   }
 
   searching.value = true;
   searchError.value = null;
-  result.value = null;
+  results.value = [];
 
   try {
     // PDPA: the typed address is sent to our own API only (never logged).
-    result.value = await $fetch<GeocodeResponse>('/api/v1/geocode', {
+    const response = await $fetch<GeocodeResponse>('/api/v1/geocode', {
       query: { address: trimmed },
     });
+    results.value = response.results;
+    // An empty `results` array is the normal "not found" case, not an error.
+    searchError.value = response.results.length === 0 ? 'not-found' : null;
   } catch (error: unknown) {
-    result.value = null;
+    results.value = [];
     const status =
       typeof error === 'object' && error && 'response' in error
         ? (error as { response?: { status?: number } }).response?.status
@@ -82,25 +109,50 @@ const runSearch = useDebounceFn(async (address: string) => {
 }, 400);
 
 watch(query, (value) => {
-  if (!value.trim()) {
-    searching.value = false;
-    searchError.value = null;
-    result.value = null;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    resetSearchState();
     return;
   }
+
+  // A directly-typed "lat, lng" pair skips the geocode round-trip entirely —
+  // validate it client-side against Thailand's bounding box instead (a UX
+  // nicety; POST /api/v1/route re-validates server-side regardless).
+  const coordinate = parseCoordinatePair(trimmed);
+  if (coordinate) {
+    searching.value = false;
+    results.value = [];
+    if (isWithinThailand(coordinate.lat, coordinate.lng)) {
+      searchError.value = null;
+      coordCandidate.value = coordinate;
+    } else {
+      searchError.value = 'out-of-bounds';
+      coordCandidate.value = null;
+    }
+    return;
+  }
+
+  coordCandidate.value = null;
   searching.value = true;
-  void runSearch(value);
+  void runSearch(trimmed);
 });
 
-function selectResult(): void {
-  if (!result.value) return;
+function selectResult(candidate: GeocodeResult): void {
   emit('update:modelValue', {
-    lat: result.value.lat,
-    lng: result.value.lng,
-    label: result.value.formattedAddress,
+    lat: candidate.lat,
+    lng: candidate.lng,
+    label: candidate.formattedAddress,
   });
   query.value = '';
-  result.value = null;
+  resetSearchState();
+}
+
+function selectCoordinate(): void {
+  if (!coordCandidate.value) return;
+  const { lat, lng } = coordCandidate.value;
+  emit('update:modelValue', { lat, lng, label: `พิกัด: ${lat}, ${lng}` });
+  query.value = '';
+  resetSearchState();
 }
 
 function clearSelection(): void {
@@ -160,15 +212,30 @@ function clearSelection(): void {
         <p v-else-if="searchError === 'error'" class="px-2 py-2 text-center text-destructive">
           เกิดข้อผิดพลาดในการค้นหาที่อยู่ กรุณาลองใหม่อีกครั้ง
         </p>
+        <p v-else-if="searchError === 'out-of-bounds'" class="px-2 py-2 text-center text-destructive">
+          กรุณาระบุพิกัดภายในประเทศไทยเท่านั้น
+        </p>
         <button
-          v-else-if="result"
+          v-else-if="coordCandidate"
           type="button"
           class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
-          @click="selectResult"
+          @click="selectCoordinate"
         >
           <MapPinIcon class="size-4 shrink-0 text-muted-foreground" />
-          <span class="truncate">{{ result.formattedAddress }}</span>
+          <span class="truncate">พิกัด: {{ coordCandidate.lat }}, {{ coordCandidate.lng }}</span>
         </button>
+        <ul v-else-if="results.length > 0" class="flex flex-col">
+          <li v-for="(candidate, index) in results" :key="`${candidate.lat}-${candidate.lng}-${index}`">
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+              @click="selectResult(candidate)"
+            >
+              <MapPinIcon class="size-4 shrink-0 text-muted-foreground" />
+              <span class="truncate">{{ candidate.formattedAddress }}</span>
+            </button>
+          </li>
+        </ul>
       </div>
 
       <p v-if="isOrigin" class="text-xs text-muted-foreground">

@@ -10,6 +10,7 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
+import { IsWithinThailandBounds } from '../../common/validators/is-within-thailand-bounds.validator';
 
 const MAX_ADDRESS_LENGTH = 200;
 
@@ -46,9 +47,16 @@ export class OriginDto {
   @Length(1, MAX_ADDRESS_LENGTH)
   address?: string;
 
+  // `@IsOptional` here does double duty: it lets the address branch omit
+  // `lat` entirely, and it means `IsWithinThailandBounds` (which reads both
+  // `lat`/`lng` off this object) is skipped whenever the client sent
+  // `{ address }` instead of coordinates — the Thailand-only bbox check only
+  // ever applies to directly-supplied coordinates, never to the
+  // geocode-resolved address branch (see SKILL.md's "Thailand-only scope").
   @IsOptional()
   @Type(() => Number)
   @IsLatitude()
+  @IsWithinThailandBounds()
   lat?: number;
 
   @IsOptional()

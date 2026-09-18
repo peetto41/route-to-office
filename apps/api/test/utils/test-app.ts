@@ -19,7 +19,10 @@ export { TEST_API_KEY };
 
 export interface OrsServiceMocks {
   routesService: { computeRoute: jest.Mock };
-  geocodingService: { geocode: jest.Mock };
+  // `geocode` (size=1) backs `POST /route`'s address branch;
+  // `geocodeMultiple` (size=5) backs `GET /api/v1/geocode`'s picker — see
+  // src/openrouteservice/geocoding.service.ts.
+  geocodingService: { geocode: jest.Mock; geocodeMultiple: jest.Mock };
   osmTileClient: { getTile: jest.Mock };
 }
 
@@ -31,7 +34,7 @@ export interface OrsHttpClientMock {
 export function createOrsServiceMocks(): OrsServiceMocks {
   return {
     routesService: { computeRoute: jest.fn() },
-    geocodingService: { geocode: jest.fn() },
+    geocodingService: { geocode: jest.fn(), geocodeMultiple: jest.fn() },
     osmTileClient: { getTile: jest.fn() },
   };
 }

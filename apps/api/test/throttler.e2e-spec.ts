@@ -79,4 +79,25 @@ describe('Throttling (e2e)', () => {
 
     expect(statuses).not.toContain(429);
   });
+
+  it('does not throttle GET /tiles/:z/:x/:y at a load representative of zooming out to view all of Thailand', async () => {
+    const server = app.getHttpServer();
+
+    // Regression test for the live bug where a single page load (~55 tile
+    // requests) zooming out to view all of Thailand, plus concurrent
+    // traffic, tripped 429s at the old TILE_THROTTLE.limit of 300/min. Fire
+    // a batch large enough to have failed under that old limit but well
+    // under the current one, confirming the new ceiling is actually usable
+    // and not just nominally higher.
+    const requestCount = 500;
+    expect(requestCount).toBeLessThan(TILE_THROTTLE.limit);
+
+    const statuses: number[] = [];
+    for (let i = 0; i < requestCount; i += 1) {
+      const response = await request(server).get('/api/v1/tiles/10/797/472');
+      statuses.push(response.status);
+    }
+
+    expect(statuses).not.toContain(429);
+  });
 });

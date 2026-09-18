@@ -3,10 +3,14 @@ import { onMounted, ref, watch } from 'vue';
 import PlacePicker from '~/components/PlacePicker.vue';
 import RouteMap from '~/components/RouteMap.client.vue';
 import RoutePanel from '~/components/RoutePanel.vue';
+import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { useGeolocation } from '~/composables/useGeolocation';
 import { useRouteQuery } from '~/composables/useRoute';
+import { isWithinThailand } from '~/lib/thailand-bounds';
 import type { CompanyResponse, Place } from '~/types/api';
+
+const OUT_OF_THAILAND_MESSAGE = 'กรุณาเลือกจุดภายในประเทศไทยเท่านั้น';
 
 useHead({ title: 'เส้นทางไปที่ทำงาน' });
 
@@ -27,6 +31,12 @@ const routeMap = ref<InstanceType<typeof RouteMap> | null>(null);
 // (map click, drag, or address search), so a later geolocation update
 // doesn't silently clobber a manual choice.
 const followGeolocationForOrigin = ref(true);
+
+// UX-only feedback for a raw lat/lng that bypasses geocoding — a map click or
+// a dragged marker (see references/frontend-nuxt.md's "Thailand-only bounds"
+// section). This is never the enforcement boundary: POST /api/v1/route
+// re-validates server-side regardless.
+const boundsError = ref<string | null>(null);
 
 const { data: company } = await useFetch<CompanyResponse>('/api/v1/company');
 
@@ -62,16 +72,47 @@ function requestCurrentLocationOrigin(): void {
   geolocation.request();
 }
 
+// Every entry point where a raw lat/lng can become an origin/destination
+// without going through GET /api/v1/geocode (which is already Thailand-only
+// server-side) funnels through this check: PlacePicker's typed-coordinate
+// path validates itself before emitting, but map clicks and dragged markers
+// land here directly.
+function isPlaceWithinThailand(place: Place | null): boolean {
+  if (!place) return true;
+  if (isWithinThailand(place.lat, place.lng)) {
+    boundsError.value = null;
+    return true;
+  }
+  boundsError.value = OUT_OF_THAILAND_MESSAGE;
+  // A dragged marker's DOM position already moved before this rejection runs
+  // and won't be reverted automatically since origin/destination don't
+  // change — snap it back explicitly so the map never silently shows an
+  // out-of-Thailand marker (see RouteMap.client.vue's `resyncMarkers`).
+  routeMap.value?.resyncMarkers();
+  return false;
+}
+
 function setManualOrigin(value: Place | null): void {
+  if (!isPlaceWithinThailand(value)) return;
   followGeolocationForOrigin.value = false;
   origin.value = value;
 }
 
+function setDestination(value: Place | null): void {
+  if (!isPlaceWithinThailand(value)) return;
+  destination.value = value;
+}
+
 function handleMapClick(point: { lat: number; lng: number }): void {
+  if (!isWithinThailand(point.lat, point.lng)) {
+    boundsError.value = OUT_OF_THAILAND_MESSAGE;
+    return;
+  }
+  boundsError.value = null;
   if (!origin.value) {
     setManualOrigin({ ...point, label: 'ตำแหน่งที่เลือกบนแผนที่' });
   } else if (!destination.value) {
-    destination.value = { ...point, label: 'ตำแหน่งที่เลือกบนแผนที่' };
+    setDestination({ ...point, label: 'ตำแหน่งที่เลือกบนแผนที่' });
   }
 }
 
@@ -91,6 +132,10 @@ watch([origin, destination], runFetchRoute);
     <aside class="flex w-full flex-col gap-4 overflow-y-auto border-b p-4 md:w-96 md:border-r md:border-b-0">
       <h1 class="text-lg font-semibold">เส้นทางไปที่ทำงาน</h1>
 
+      <Alert v-if="boundsError" variant="destructive">
+        <AlertDescription>{{ boundsError }}</AlertDescription>
+      </Alert>
+
       <PlacePicker
         role="origin"
         :model-value="origin"
@@ -103,7 +148,7 @@ watch([origin, destination], runFetchRoute);
       <PlacePicker
         role="destination"
         :model-value="destination"
-        @update:model-value="(value) => (destination = value)"
+        @update:model-value="setDestination"
       />
 
       <Button
@@ -125,7 +170,7 @@ watch([origin, destination], runFetchRoute);
         :route="route?.route ?? null"
         :bounds="route?.bounds ?? null"
         @update:origin="setManualOrigin"
-        @update:destination="(value) => (destination = value)"
+        @update:destination="setDestination"
         @map-click="handleMapClick"
       />
     </main>
