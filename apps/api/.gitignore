@@ -1,0 +1,2 @@
+# Build artifacts not already covered by the root .gitignore
+*.tsbuildinfo

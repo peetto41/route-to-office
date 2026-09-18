@@ -4,10 +4,16 @@ title = "route-to-office gitleaks config"
 useDefault = true
 
 [[rules]]
-id = "google-maps-api-key"
-description = "Google API key (used for Maps Platform: Routes, Geocoding, Tiles)"
-regex = '''AIza[0-9A-Za-z\-_]{35}'''
-tags = ["key", "google"]
+id = "openrouteservice-api-key"
+# ORS v2 dashboard keys are a base64-encoded JSON blob, so they consistently start with
+# "eyJvcmci" (base64 for the literal `{"org"`). Verify this against your own issued key
+# and adjust if ORS's format has changed — this is a best-effort narrow rule; the
+# default gitleaks ruleset's generic-api-key/high-entropy rules (enabled via
+# `useDefault` above) are the real safety net regardless of whether this specific
+# pattern still matches.
+description = "OpenRouteService API key"
+regex = '''eyJvcmci[0-9A-Za-z+/=_-]{20,}'''
+tags = ["key", "openrouteservice"]
 
 [allowlist]
 description = "Known-safe placeholders and example files"
@@ -16,6 +22,6 @@ paths = [
   '''(.*/)?assets/env\.example$''',
 ]
 regexes = [
-  '''AIza\.\.\.''',
-  '''YOUR_GOOGLE_MAPS_API_KEY''',
+  '''eyJvcmci\.\.\.''',
+  '''YOUR_ORS_API_KEY''',
 ]

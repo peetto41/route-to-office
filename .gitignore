@@ -18,3 +18,8 @@ coverage/
 
 # OS
 .DS_Store
+
+# Claude Code internal tooling — agents, skills, commands, project instructions.
+# Not part of the shipped app.
+.claude/
+CLAUDE.md
