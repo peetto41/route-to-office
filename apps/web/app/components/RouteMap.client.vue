@@ -1,11 +1,24 @@
 <script setup lang="ts">
 // maplibre-gl 6.x ships pure ESM with only named exports (no default export),
 // so `import maplibregl from 'maplibre-gl'` would silently bind `undefined`.
-import { Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue';
 import type { GeoJSONSource, LngLatBoundsLike, StyleSpecification } from 'maplibre-gl';
 import type { GeoJsonLineString, Place } from '~/types/api';
+
+// maplibre-gl's worker script fails to load in a genuine production build
+// (`vite build`, any Nitro preset) — see the long comment on
+// `copyMaplibreWorkerAssets` in nuxt.config.ts for why. That hook copies the
+// worker script and its sibling shared-runtime chunk into
+// `public/vendor/maplibre-gl/` on every `nuxt dev`/`nuxt build`, and
+// `setWorkerUrl()` here points maplibre-gl at that stable, unbundled path
+// instead of letting it compute (and get wrong) its own — this must run
+// before any `Map` is constructed. This app has no custom `app.baseURL`
+// (see nuxt.config.ts), so the root-relative path below is safe as-is; if a
+// subpath deployment is ever introduced, prefix this with
+// `useRuntimeConfig().app.baseURL`.
+setWorkerUrl('/vendor/maplibre-gl/maplibre-gl-worker.mjs');
 
 /**
  * `.client.vue` because MapLibre needs `window`/`document` — it must never

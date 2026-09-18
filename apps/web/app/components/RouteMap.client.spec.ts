@@ -89,6 +89,10 @@ vi.mock('maplibre-gl', () => ({
   NavigationControl: class MockNavigationControl {
     onAdd = vi.fn(() => document.createElement('div'));
   },
+  // Called once at module scope to point maplibre-gl at the worker script
+  // copied into public/vendor/maplibre-gl/ (see the comment above it in
+  // RouteMap.client.vue) — irrelevant to these tests, just needs to exist.
+  setWorkerUrl: vi.fn(),
 }));
 
 vi.mock('maplibre-gl/dist/maplibre-gl.css', () => ({}));

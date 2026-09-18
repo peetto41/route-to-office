@@ -7,6 +7,11 @@
 dist
 .netlify
 
+# maplibre-gl's worker script + its shared chunk, copied from node_modules by
+# the `ready` hook in nuxt.config.ts (see comment there) — regenerated on
+# every `nuxt dev`/`nuxt build`, never hand-edited, so not checked in.
+public/vendor/maplibre-gl/
+
 # Node dependencies
 node_modules
 
