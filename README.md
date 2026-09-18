@@ -103,10 +103,11 @@ npm --prefix apps/web run lint && npm --prefix apps/web run test && npm --prefix
 ## Deploy
 
 - **`apps/api`** — deploy แบบ Node service ปกติ (เช่น Render) รันด้วย `npm run build && npm run start:prod`
-- **`apps/web`** — deploy บน Netlify (`netlify.toml` ที่ root กำหนด base directory/build command ไว้แล้ว)
-  ต้องตั้ง environment variable `API_BASE_URL` ให้ชี้ไปที่ URL ของ `apps/api` ที่ deploy จริงใน
-  Netlify dashboard เอง (ค่านี้ถูก bake เข้า build ตอน compile — เปลี่ยนทีหลังต้อง trigger build ใหม่
-  ไม่ใช่แค่รีสตาร์ท)
+- **`apps/web`** — deploy บน Vercel (`apps/web/vercel.json` กำหนด framework/build command ไว้แล้ว —
+  ตั้ง **Root Directory** เป็น `apps/web` ตอน import project) ต้องตั้ง environment variable
+  `API_BASE_URL` ให้ชี้ไปที่ URL ของ `apps/api` ที่ deploy จริงเองใน dashboard (ค่านี้ถูก bake เข้า
+  build ตอน compile — เปลี่ยนทีหลังต้อง trigger build ใหม่ ไม่ใช่แค่รีสตาร์ท) มี `netlify.toml` เตรียมไว้
+  ให้ด้วยเผื่ออยาก deploy ผ่าน Netlify แทน
 
 ## Security & Privacy
 
@@ -122,3 +123,30 @@ npm --prefix apps/web run lint && npm --prefix apps/web run test && npm --prefix
   ต่างจากผู้ให้บริการเชิงพาณิชย์บางราย
 - **การค้นหาที่อยู่/สถานที่สำคัญด้วยชื่อภาษาอังกฤษอาจแม่นยำน้อยกว่า** เนื่องจากใช้ข้อมูลจาก OpenStreetMap
   ซึ่งฐานข้อมูลชื่อสถานที่ (POI) ยังไม่ครบเท่าผู้ให้บริการเชิงพาณิชย์บางราย — การค้นหาด้วยที่อยู่หรือชื่อถนนที่ชัดเจนจะแม่นยำกว่า
+
+## License & Attribution
+
+โปรเจ็คนี้ใช้ข้อมูล/บริการ/ไลบรารีจากภายนอกดังนี้ — ต้องให้เครดิตตามเงื่อนไขของแต่ละเจ้า:
+
+**ข้อมูลแผนที่และเส้นทาง**
+
+| แหล่งที่มา | สัญญาอนุญาต | หมายเหตุ |
+|---|---|---|
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) | [ODbL](https://opendatacommons.org/licenses/odbl/) | © OpenStreetMap contributors — ข้อมูลแผนที่/tile ทั้งหมด แสดง attribution นี้บนแผนที่ทุกหน้าตามเงื่อนไขของ ODbL |
+| [OpenRouteService](https://openrouteservice.org/) | ให้บริการภายใต้เงื่อนไขของ [openrouteservice.org](https://openrouteservice.org/terms-of-service/) (ข้อมูลฐานมาจาก OpenStreetMap เช่นกัน) | ใช้คำนวณเส้นทางและค้นหาที่อยู่ ผ่าน backend ของเราเท่านั้น |
+
+**Open-source libraries หลักที่ใช้**
+
+| ไลบรารี | สัญญาอนุญาต |
+|---|---|
+| [NestJS](https://nestjs.com/) | MIT |
+| [Nuxt](https://nuxt.com/) / [Vue](https://vuejs.org/) | MIT |
+| [MapLibre GL JS](https://maplibre.org/) | BSD-3-Clause |
+| [Tailwind CSS](https://tailwindcss.com/) | MIT |
+| [shadcn-vue](https://www.shadcn-vue.com/) ([reka-ui](https://reka-ui.com/)) | MIT |
+| [class-validator](https://github.com/typestack/class-validator) / [class-transformer](https://github.com/typestack/class-transformer) | MIT |
+
+ดูรายการไลบรารีทั้งหมดพร้อมสัญญาอนุญาตแบบละเอียดได้จาก `package.json`/`package-lock.json` ของแต่ละแอป
+(`apps/api`, `apps/web`)
+
+โค้ดของโปรเจ็คนี้เอง (นอกเหนือจากไลบรารี/บริการภายนอกด้านบน) ยังไม่ได้ระบุสัญญาอนุญาตแบบเปิด — ใช้งานภายในทีม/บริษัทเท่านั้น
