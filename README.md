@@ -37,6 +37,8 @@ Browser (Nuxt 4 + MapLibre GL) ──▶ our API (NestJS, /api/v1/*) ──▶ O
   (ปฏิเสธสิทธิ์ / ไม่รองรับ / พิมพ์ที่อยู่เอง / คลิกเลือกบนแผนที่)
 - ต้นทางและปลายทางแก้ไขได้ทั้งคู่เสมอ (ตำแหน่งปัจจุบันเป็นแค่ค่าเริ่มต้น ไม่ใช่ค่าตายตัว)
 - คำนวณระยะทาง เวลาเดินทางโดยประมาณ และเวลาถึงโดยประมาณ พร้อมเส้นทางแบบ turn-by-turn
+- ค้นหาที่อยู่/สถานที่ได้ทั้งภาษาไทยและอังกฤษ แสดงผลลัพธ์ให้เลือกสูงสุด 5 รายการ (ไม่เดาให้อัตโนมัติ)
+  หรือพิมพ์พิกัด lat, lng ตรงๆ ก็ได้ — จำกัดเฉพาะจุดภายในประเทศไทยเท่านั้น
 - UI ภาษาไทยทั้งหมด
 - Rate limiting แยกตามประเภท endpoint, caching สำหรับ geocode/tiles, error response แบบ RFC 7807
   (`application/problem+json`) ที่ไม่มีวันหลุดรายละเอียดจาก upstream หรือ API key ออกไป
@@ -93,9 +95,18 @@ npm --prefix apps/web run lint && npm --prefix apps/web run test && npm --prefix
 | Endpoint | คำอธิบาย |
 |---|---|
 | `POST /api/v1/route` | คำนวณเส้นทางจากต้นทางไปปลายทาง (ปลายทาง default = ออฟฟิศ) |
-| `GET /api/v1/geocode?address=...` | แปลงที่อยู่เป็นพิกัด |
+| `GET /api/v1/geocode?address=...` | แปลงที่อยู่เป็นพิกัด คืนสูงสุด 5 ผลลัพธ์ (ขอบเขตประเทศไทยเท่านั้น) |
 | `GET /api/v1/company` | ข้อมูลออฟฟิศ (ชื่อ + พิกัด) สำหรับ marker บนแผนที่ |
 | `GET /api/v1/tiles/{z}/{x}/{y}` | proxy map tile จาก OpenStreetMap |
+| `GET /api/v1/health` | liveness check สำหรับ uptime monitor ไม่มี rate limit |
+
+## Deploy
+
+- **`apps/api`** — deploy แบบ Node service ปกติ (เช่น Render) รันด้วย `npm run build && npm run start:prod`
+- **`apps/web`** — deploy บน Netlify (`netlify.toml` ที่ root กำหนด base directory/build command ไว้แล้ว)
+  ต้องตั้ง environment variable `API_BASE_URL` ให้ชี้ไปที่ URL ของ `apps/api` ที่ deploy จริงใน
+  Netlify dashboard เอง (ค่านี้ถูก bake เข้า build ตอน compile — เปลี่ยนทีหลังต้อง trigger build ใหม่
+  ไม่ใช่แค่รีสตาร์ท)
 
 ## Security & Privacy
 
