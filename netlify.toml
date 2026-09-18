@@ -1,11 +1,17 @@
 [build]
   base = "apps/web"
   command = "npm run build"
-  # Nuxt's own standard build output (no forced Nitro preset) — Netlify's official
-  # Nuxt Runtime build plugin auto-detects this .output folder and wraps
-  # .output/server into Netlify Functions itself, so SSR + the /api/v1/** proxy
-  # still work at runtime without us forcing NITRO_PRESET=netlify manually.
-  publish = ".output/public"
+  # Confirmed from an actual Netlify build log: Nitro auto-detects it's running
+  # on Netlify's own infra (checks env vars Netlify's build system sets) and
+  # switches to the `netlify` preset regardless of what's set locally — that
+  # preset writes public assets to dist/ and the serverless function to
+  # .netlify/functions-internal/, NOT .output/public (which is only what the
+  # default node-server preset produces, e.g. when building for a plain VPS).
+  publish = "dist"
 
 [build.environment]
   NODE_VERSION = "22"
+  # Redundant with Nitro's own auto-detection above, but explicit here so this
+  # doesn't silently depend on that auto-detection continuing to work the same
+  # way in a future Nitro/Netlify version.
+  NITRO_PRESET = "netlify"
