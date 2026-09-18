@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { CompanyModule } from './company/company.module';
 import { validateEnv } from './config/env.validation';
 import { GeocodeModule } from './geocode/geocode.module';
+import { HealthModule } from './health/health.module';
 import { RouteModule } from './route/route.module';
 import { TilesModule } from './tiles/tiles.module';
 
@@ -22,11 +23,15 @@ import { TilesModule } from './tiles/tiles.module';
     // `GET /tiles/:z/:x/:y` overrides this with its own, higher
     // `TILE_THROTTLE` (see common/throttle.constants.ts) since a single map
     // viewport legitimately fires dozens of tile requests. `GET /company`
-    // stays on this default.
+    // stays on this default. `GET /health` opts out of throttling entirely
+    // via `@SkipThrottle()` (see health/health.controller.ts) since an
+    // uptime monitor polling it every few seconds must never see a
+    // false-negative 429.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     RouteModule,
     GeocodeModule,
     CompanyModule,
+    HealthModule,
     TilesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
