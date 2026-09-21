@@ -1,32 +1,14 @@
 /**
  * Tight per-route override applied to per-user-action endpoints that reach
- * OpenRouteService (`POST /route`, `GET /geocode`) — see
+ * Google Maps Platform (`POST /route`, `GET /geocode`) — see
  * references/backend-nestjs.md's "Rate limiting (throttler)" section. Kept
  * separate from the generous module-wide default configured in
- * `app.module.ts` so a client can't burn through the account's ORS plan
- * quota. `GET /company` deliberately does not use this constant, and neither
- * does `GET /tiles/:z/:x/:y` — see `TILE_THROTTLE` below.
+ * `app.module.ts` so a client can't burn through the account's Google Maps
+ * Platform quota. `GET /company` deliberately does not use this constant.
+ *
+ * Retained its original `ORS_THROTTLE` name from the OpenRouteService
+ * integration this app used before migrating to Google Maps Platform — the
+ * constant's purpose (a tight, per-user-action throttle) is unchanged, only
+ * the upstream provider it's protecting is different now.
  */
 export const ORS_THROTTLE = { limit: 10, ttl: 60_000 };
-
-/**
- * Separate, much higher override for `GET /tiles/:z/:x/:y` — see
- * references/backend-nestjs.md's "Rate limiting (throttler)" section. Unlike
- * `POST /route` and `GET /geocode`, this endpoint is not a per-user-action
- * call: a single map viewport legitimately fires dozens of tile requests,
- * and panning/zooming fires many more. Reusing `ORS_THROTTLE` here 429s
- * normal map use into visible gaps in the tile grid. This still caps abuse
- * (OSM's usage policy expects reasonable, not unlimited, request volume),
- * just sized for "a browser panning a map" rather than "a user submitting a
- * form."
- *
- * An earlier value of 300/min was found live to be too low: zooming out to
- * view all of Thailand at once (a completely normal interaction, not abuse)
- * fires enough tile requests across zoom levels/cities to burn through 300
- * within a single page load, 429-ing legitimate tiles and leaving visible
- * gaps in the map ("แมพโหลดไม่หมดทั้งประเทศไทย"). The real protection for this
- * endpoint is the in-memory tile cache and OSM's own usage-policy
- * expectations, not this number — so size it generously (comfortably in the
- * four figures per minute) rather than risk reproducing that bug.
- */
-export const TILE_THROTTLE = { limit: 2000, ttl: 60_000 };

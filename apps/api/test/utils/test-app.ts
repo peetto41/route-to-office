@@ -9,52 +9,47 @@ import { Test, TestingModuleBuilder } from '@nestjs/testing';
 // evaluated). See test-env.ts for why that file has zero Nest imports.
 import { AppModule } from '../../src/app.module';
 import { ProblemJsonFilter } from '../../src/common/filters/problem-json.filter';
-import { GeocodingService } from '../../src/openrouteservice/geocoding.service';
-import { OrsHttpClient } from '../../src/openrouteservice/ors-http.client';
-import { RoutesService } from '../../src/openrouteservice/routes.service';
-import { OsmTileClient } from '../../src/tiles/osm-tile.client';
+import { GeocodingService } from '../../src/google-maps/geocoding.service';
+import { GoogleMapsHttpClient } from '../../src/google-maps/google-maps-http.client';
+import { RoutesService } from '../../src/google-maps/routes.service';
 import { setTestEnv, TEST_API_KEY } from './test-env';
 
 export { TEST_API_KEY };
 
-export interface OrsServiceMocks {
+export interface GoogleMapsServiceMocks {
   routesService: { computeRoute: jest.Mock };
-  // `geocode` (size=1) backs `POST /route`'s address branch;
-  // `geocodeMultiple` (size=5) backs `GET /api/v1/geocode`'s picker — see
-  // src/openrouteservice/geocoding.service.ts.
+  // `geocode` (single top result) backs `POST /route`'s address branch;
+  // `geocodeMultiple` (up to 5 results) backs `GET /api/v1/geocode`'s picker
+  // — see src/google-maps/geocoding.service.ts.
   geocodingService: { geocode: jest.Mock; geocodeMultiple: jest.Mock };
-  osmTileClient: { getTile: jest.Mock };
 }
 
-export interface OrsHttpClientMock {
-  postJson: jest.Mock;
+export interface GoogleMapsHttpClientMock {
   getJson: jest.Mock;
 }
 
-export function createOrsServiceMocks(): OrsServiceMocks {
+export function createGoogleMapsServiceMocks(): GoogleMapsServiceMocks {
   return {
     routesService: { computeRoute: jest.fn() },
     geocodingService: { geocode: jest.fn(), geocodeMultiple: jest.fn() },
-    osmTileClient: { getTile: jest.fn() },
   };
 }
 
-export function createOrsHttpClientMock(): OrsHttpClientMock {
+export function createGoogleMapsHttpClientMock(): GoogleMapsHttpClientMock {
   return {
-    postJson: jest.fn(),
     getJson: jest.fn(),
   };
 }
 
 /**
  * Builds a full app (same global pipes/filters as `main.ts`) with
- * `RoutesService`, `GeocodingService`, and `OsmTileClient` replaced by fakes
- * — i.e. every code path that would otherwise call OpenRouteService (or
- * OpenStreetMap) is a controlled fake. Use this for tests that need an
- * ORS-backed endpoint to succeed predictably.
+ * `RoutesService` and `GeocodingService` replaced by fakes — i.e. every code
+ * path that would otherwise call Google Maps Platform is a controlled fake.
+ * Use this for tests that need a Google-Maps-backed endpoint to succeed
+ * predictably.
  */
 export async function buildSuccessTestApp(
-  mocks: OrsServiceMocks,
+  mocks: GoogleMapsServiceMocks,
 ): Promise<INestApplication> {
   setTestEnv();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -62,31 +57,26 @@ export async function buildSuccessTestApp(
     .useValue(mocks.routesService)
     .overrideProvider(GeocodingService)
     .useValue(mocks.geocodingService)
-    .overrideProvider(OsmTileClient)
-    .useValue(mocks.osmTileClient)
     .compile();
 
   return initApp(moduleRef);
 }
 
 /**
- * Builds a full app with only the *lowest-level* HTTP clients
- * (`OrsHttpClient`, `OsmTileClient`) replaced by fakes that always reject —
- * the real `RoutesService`/`GeocodingService` code still runs, so this
- * exercises the real "ORS failed" -> `UpstreamMapsException` conversion, not
- * a stubbed-out version of it. Use this to force an upstream ORS failure
- * end-to-end.
+ * Builds a full app with only the *lowest-level* HTTP client
+ * (`GoogleMapsHttpClient`) replaced by a fake that always rejects — the real
+ * `RoutesService`/`GeocodingService` code still runs, so this exercises the
+ * real "Google Maps call failed" -> `UpstreamMapsException` conversion, not a
+ * stubbed-out version of it. Use this to force an upstream Google Maps
+ * failure end-to-end.
  */
 export async function buildFailureTestApp(
-  orsHttpClientMock: OrsHttpClientMock,
-  osmTileClientMock: { getTile: jest.Mock },
+  googleMapsHttpClientMock: GoogleMapsHttpClientMock,
 ): Promise<INestApplication> {
   setTestEnv();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideProvider(OrsHttpClient)
-    .useValue(orsHttpClientMock)
-    .overrideProvider(OsmTileClient)
-    .useValue(osmTileClientMock)
+    .overrideProvider(GoogleMapsHttpClient)
+    .useValue(googleMapsHttpClientMock)
     .compile();
 
   return initApp(moduleRef);

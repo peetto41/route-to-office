@@ -19,7 +19,7 @@ import {
 export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
-  ORS_API_KEY!: string;
+  GOOGLE_MAPS_SERVER_API_KEY!: string;
 
   @IsString()
   @IsNotEmpty()

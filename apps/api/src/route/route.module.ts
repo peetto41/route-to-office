@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { OpenrouteserviceModule } from '../openrouteservice/openrouteservice.module';
+import { GoogleMapsModule } from '../google-maps/google-maps.module';
 import { RouteController } from './route.controller';
 import { RouteService } from './route.service';
 
 @Module({
-  imports: [OpenrouteserviceModule],
+  imports: [GoogleMapsModule],
   controllers: [RouteController],
   providers: [RouteService],
 })

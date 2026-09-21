@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { OpenrouteserviceModule } from '../openrouteservice/openrouteservice.module';
+import { GoogleMapsModule } from '../google-maps/google-maps.module';
 import { GeocodeController } from './geocode.controller';
 import { GeocodeService } from './geocode.service';
 
 @Module({
-  imports: [OpenrouteserviceModule],
+  imports: [GoogleMapsModule],
   controllers: [GeocodeController],
   providers: [GeocodeService],
 })

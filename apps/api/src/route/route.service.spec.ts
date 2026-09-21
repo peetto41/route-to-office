@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../config/env.validation';
-import { GeocodingService } from '../openrouteservice/geocoding.service';
-import { RoutesService } from '../openrouteservice/routes.service';
+import { GeocodingService } from '../google-maps/geocoding.service';
+import { RoutesService } from '../google-maps/routes.service';
 import { RouteService } from './route.service';
 
 /**

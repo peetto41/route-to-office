@@ -13,7 +13,7 @@ import { validateEnv } from './env.validation';
 describe('validateEnv', () => {
   function validEnv(): Record<string, unknown> {
     return {
-      ORS_API_KEY: 'eyJvcmci-fake-test-key',
+      GOOGLE_MAPS_SERVER_API_KEY: 'AIzaFakeTestKeyNotReal00000000000',
       COMPANY_NAME: 'Test Co',
       COMPANY_LAT: '13.7469',
       COMPANY_LNG: '100.5390',
@@ -40,14 +40,14 @@ describe('validateEnv', () => {
     expect(result.PORT).toBe(3000);
   });
 
-  it('fails fast when ORS_API_KEY is missing', () => {
+  it('fails fast when GOOGLE_MAPS_SERVER_API_KEY is missing', () => {
     const env = validEnv();
-    delete env.ORS_API_KEY;
+    delete env.GOOGLE_MAPS_SERVER_API_KEY;
     expect(() => validateEnv(env)).toThrow(/Invalid environment configuration/);
   });
 
-  it('fails fast when ORS_API_KEY is empty', () => {
-    const env = { ...validEnv(), ORS_API_KEY: '' };
+  it('fails fast when GOOGLE_MAPS_SERVER_API_KEY is empty', () => {
+    const env = { ...validEnv(), GOOGLE_MAPS_SERVER_API_KEY: '' };
     expect(() => validateEnv(env)).toThrow();
   });
 
@@ -79,11 +79,11 @@ describe('validateEnv', () => {
     expect(() => validateEnv(env)).toThrow();
   });
 
-  it('never includes the raw ORS_API_KEY value in the thrown error message, even when validation fails on a different field', () => {
-    const secretLookingKey = 'eyJvcmci-super-secret-value';
+  it('never includes the raw GOOGLE_MAPS_SERVER_API_KEY value in the thrown error message, even when validation fails on a different field', () => {
+    const secretLookingKey = 'AIzaSuperSecretValueNotReal00000';
     const env = {
       ...validEnv(),
-      ORS_API_KEY: secretLookingKey,
+      GOOGLE_MAPS_SERVER_API_KEY: secretLookingKey,
       COMPANY_LAT: '999',
     };
     try {

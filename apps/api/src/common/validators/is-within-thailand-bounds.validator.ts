@@ -13,10 +13,9 @@ import {
 /**
  * Reusable Thailand-bbox check for any `{ lat, lng }`-shaped DTO
  * (`LatLngDto`, and the coordinate branch of `OriginDto`) — reads both `lat`
- * and `lng` off the object under validation, the same sibling-field pattern
- * `tiles/dto/tile-params.dto.ts`'s `IsWithinTileBounds` uses, so this only
- * needs to be attached to one field (`lat`) rather than duplicated on both
- * `lat` and `lng`, and never needs the four-comparison bbox check
+ * and `lng` off the object under validation, a sibling-field pattern that
+ * only needs to be attached to one field (`lat`) rather than duplicated on
+ * both `lat` and `lng`, and never needs the four-comparison bbox check
  * copy-pasted per DTO.
  *
  * Deliberately permissive (returns `true`, i.e. "no bbox violation found")
@@ -28,7 +27,7 @@ import {
  * the client sent `{ address }` instead of coordinates — the Thailand-only
  * bbox check applies only to directly-supplied coordinates, never to the
  * geocode-resolved address branch, which is already scoped to Thailand via
- * OpenRouteService's own country filter (see SKILL.md's "Thailand-only
+ * Google Geocoding's own country filter (see SKILL.md's "Thailand-only
  * scope" section).
  */
 @ValidatorConstraint({ name: 'isWithinThailandBounds', async: false })

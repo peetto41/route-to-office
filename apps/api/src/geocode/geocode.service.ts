@@ -1,7 +1,7 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Cache } from 'cache-manager';
-import { GeocodingService } from '../openrouteservice/geocoding.service';
+import { GeocodingService } from '../google-maps/geocoding.service';
 import { GeocodeResponseDto } from './dto/geocode-response.dto';
 
 // An address resolves to the same coordinates regardless of when it's

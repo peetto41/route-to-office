@@ -8,7 +8,6 @@ import { validateEnv } from './config/env.validation';
 import { GeocodeModule } from './geocode/geocode.module';
 import { HealthModule } from './health/health.module';
 import { RouteModule } from './route/route.module';
-import { TilesModule } from './tiles/tiles.module';
 
 @Module({
   imports: [
@@ -18,21 +17,20 @@ import { TilesModule } from './tiles/tiles.module';
     }),
     CacheModule.register({ isGlobal: true }),
     // A generous module-wide default. `POST /route` and `GET /geocode`
-    // override this with the much tighter `ORS_THROTTLE` since they are
-    // per-user-action calls fronting a quota-limited OpenRouteService plan.
-    // `GET /tiles/:z/:x/:y` overrides this with its own, higher
-    // `TILE_THROTTLE` (see common/throttle.constants.ts) since a single map
-    // viewport legitimately fires dozens of tile requests. `GET /company`
+    // override this with the much tighter `ORS_THROTTLE` (see
+    // common/throttle.constants.ts) since they are per-user-action calls
+    // fronting a quota-limited Google Maps Platform plan. `GET /company`
     // stays on this default. `GET /health` opts out of throttling entirely
     // via `@SkipThrottle()` (see health/health.controller.ts) since an
     // uptime monitor polling it every few seconds must never see a
-    // false-negative 429.
+    // false-negative 429. There is no tile proxy/tile-specific throttle: the
+    // frontend renders its base map via the Google Maps JavaScript SDK
+    // directly, which fetches Google's own tiles client-side.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     RouteModule,
     GeocodeModule,
     CompanyModule,
     HealthModule,
-    TilesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

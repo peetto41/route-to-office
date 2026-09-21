@@ -7,11 +7,10 @@ import { GeocodeService } from './geocode.service';
 
 /**
  * `GET /api/v1/geocode?address=...` — resolves a free-text address to
- * coordinates independent of computing a full route. Fronts OpenRouteService
- * Geocoding, which has its own plan quota, and is a per-user-action call, so
- * it carries the same tight throttle as `POST /route`. `GET /tiles/:z/:x/:y`
- * is a different shape of traffic and uses its own, much higher
- * `TILE_THROTTLE` instead.
+ * coordinates independent of computing a full route. Fronts Google Maps
+ * Platform's Geocoding API, which has its own plan quota, and is a
+ * per-user-action call, so it carries the same tight throttle as
+ * `POST /route`.
  */
 @Throttle({ default: ORS_THROTTLE })
 @Controller('geocode')

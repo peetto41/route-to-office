@@ -1,14 +1,18 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 
 /**
- * Thrown by the openrouteservice module (or the tile proxy) whenever a call
- * to an upstream mapping service fails (network error, non-2xx response,
- * timeout, malformed payload).
+ * Thrown by the google-maps module whenever a call to Google Maps Platform
+ * (Directions or Geocoding) fails — a transport-level failure (network
+ * error, non-2xx response, timeout) or a logical one signalled via that
+ * API's own `status` field (e.g. `OVER_QUERY_LIMIT`, `REQUEST_DENIED`,
+ * `INVALID_REQUEST`, or an unroutable `NOT_FOUND`/`ZERO_RESULTS` on
+ * Directions).
  *
  * Deliberately carries only a generic, hard-coded detail message — never the
- * upstream error body, request URL, or API key. The raw upstream error
- * should be logged server-side (without the API key) by the caller if
- * needed, never attached to this exception's response body.
+ * upstream error body, request URL (which, for Google's APIs, carries the
+ * API key in its query string), or API key. The raw upstream error should be
+ * logged server-side (without the API key) by the caller if needed, never
+ * attached to this exception's response body.
  */
 export class UpstreamMapsException extends HttpException {
   constructor(detail = 'The mapping service is temporarily unavailable.') {

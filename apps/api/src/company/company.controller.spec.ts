@@ -8,8 +8,8 @@ import { CompanyController } from './company.controller';
  * comment on `company.controller.ts`). This is a plain, synchronous unit test
  * rather than an e2e one specifically to prove that last part: the
  * controller is built here with *only* a `ConfigService` fake — no
- * `OrsHttpClient`/`RoutesService`/`GeocodingService` collaborator exists for
- * it to have accidentally started depending on.
+ * `GoogleMapsHttpClient`/`RoutesService`/`GeocodingService` collaborator
+ * exists for it to have accidentally started depending on.
  */
 describe('CompanyController', () => {
   it('returns COMPANY_NAME/COMPANY_LAT/COMPANY_LNG from config', () => {
@@ -44,8 +44,8 @@ describe('CompanyController', () => {
   it('is a synchronous read with no other collaborator to make an upstream call through', () => {
     // The controller's constructor signature only accepts a ConfigService —
     // if it ever grew a dependency on RoutesService/GeocodingService/
-    // OrsHttpClient (i.e. started calling an upstream service), this would
-    // need updating, which is the point: it forces that change to be
+    // GoogleMapsHttpClient (i.e. started calling an upstream service), this
+    // would need updating, which is the point: it forces that change to be
     // deliberate rather than silent.
     expect(CompanyController.length).toBe(1);
   });

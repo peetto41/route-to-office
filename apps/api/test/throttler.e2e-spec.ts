@@ -1,10 +1,10 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ORS_THROTTLE, TILE_THROTTLE } from '../src/common/throttle.constants';
+import { ORS_THROTTLE } from '../src/common/throttle.constants';
 import {
   buildSuccessTestApp,
-  createOrsServiceMocks,
-  OrsServiceMocks,
+  createGoogleMapsServiceMocks,
+  GoogleMapsServiceMocks,
 } from './utils/test-app';
 
 const fakeComputeRouteResult = {
@@ -28,15 +28,11 @@ const fakeComputeRouteResult = {
 
 describe('Throttling (e2e)', () => {
   let app: INestApplication;
-  let mocks: OrsServiceMocks;
+  let mocks: GoogleMapsServiceMocks;
 
   beforeAll(async () => {
-    mocks = createOrsServiceMocks();
+    mocks = createGoogleMapsServiceMocks();
     mocks.routesService.computeRoute.mockResolvedValue(fakeComputeRouteResult);
-    mocks.osmTileClient.getTile.mockResolvedValue({
-      buffer: Buffer.from('fake-tile-bytes'),
-      contentType: 'image/png',
-    });
     app = await buildSuccessTestApp(mocks);
   });
 
@@ -59,45 +55,5 @@ describe('Throttling (e2e)', () => {
 
     expect(statuses.slice(0, ORS_THROTTLE.limit)).not.toContain(429);
     expect(statuses[ORS_THROTTLE.limit]).toBe(429);
-  });
-
-  it('does not throttle GET /tiles/:z/:x/:y at the tight ORS_THROTTLE limit', async () => {
-    const server = app.getHttpServer();
-
-    // Fire more requests than ORS_THROTTLE.limit but comfortably under
-    // TILE_THROTTLE.limit. If tiles were still (accidentally) sharing
-    // ORS_THROTTLE, this batch would contain a 429; TILE_THROTTLE being an
-    // actually separate, higher limit means it should not.
-    const requestCount = ORS_THROTTLE.limit + 5;
-    expect(requestCount).toBeLessThan(TILE_THROTTLE.limit);
-
-    const statuses: number[] = [];
-    for (let i = 0; i < requestCount; i += 1) {
-      const response = await request(server).get('/api/v1/tiles/1/0/0');
-      statuses.push(response.status);
-    }
-
-    expect(statuses).not.toContain(429);
-  });
-
-  it('does not throttle GET /tiles/:z/:x/:y at a load representative of zooming out to view all of Thailand', async () => {
-    const server = app.getHttpServer();
-
-    // Regression test for the live bug where a single page load (~55 tile
-    // requests) zooming out to view all of Thailand, plus concurrent
-    // traffic, tripped 429s at the old TILE_THROTTLE.limit of 300/min. Fire
-    // a batch large enough to have failed under that old limit but well
-    // under the current one, confirming the new ceiling is actually usable
-    // and not just nominally higher.
-    const requestCount = 500;
-    expect(requestCount).toBeLessThan(TILE_THROTTLE.limit);
-
-    const statuses: number[] = [];
-    for (let i = 0; i < requestCount; i += 1) {
-      const response = await request(server).get('/api/v1/tiles/10/797/472');
-      statuses.push(response.status);
-    }
-
-    expect(statuses).not.toContain(429);
   });
 });

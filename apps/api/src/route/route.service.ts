@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../config/env.validation';
-import { GeocodingService } from '../openrouteservice/geocoding.service';
-import { LatLng, RoutesService } from '../openrouteservice/routes.service';
+import { GeocodingService } from '../google-maps/geocoding.service';
+import { LatLng, RoutesService } from '../google-maps/routes.service';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { OriginDto } from './dto/origin.dto';
 import { RouteResponseDto } from './dto/route-response.dto';
 
 /**
  * Orchestrates `POST /api/v1/route`: geocode (only if the client sent a
- * free-text address) -> ORS directions -> map into the response contract.
+ * free-text address) -> Google Directions -> map into the response contract.
  * Never caches its result — `arrivalTime` is computed from the current time
  * (see references/backend-nestjs.md's "Caching" section), even though
  * `durationSeconds` itself is a static typical-road-speed estimate, not live

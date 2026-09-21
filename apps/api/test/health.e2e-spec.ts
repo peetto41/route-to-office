@@ -3,16 +3,16 @@ import request from 'supertest';
 import { ORS_THROTTLE } from '../src/common/throttle.constants';
 import {
   buildSuccessTestApp,
-  createOrsServiceMocks,
-  OrsServiceMocks,
+  createGoogleMapsServiceMocks,
+  GoogleMapsServiceMocks,
 } from './utils/test-app';
 
 describe('Health (e2e)', () => {
   let app: INestApplication;
-  let mocks: OrsServiceMocks;
+  let mocks: GoogleMapsServiceMocks;
 
   beforeAll(async () => {
-    mocks = createOrsServiceMocks();
+    mocks = createGoogleMapsServiceMocks();
     app = await buildSuccessTestApp(mocks);
   });
 

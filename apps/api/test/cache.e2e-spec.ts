@@ -2,16 +2,16 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import {
   buildSuccessTestApp,
-  createOrsServiceMocks,
-  OrsServiceMocks,
+  createGoogleMapsServiceMocks,
+  GoogleMapsServiceMocks,
 } from './utils/test-app';
 
 describe('Caching (e2e)', () => {
   let app: INestApplication;
-  let mocks: OrsServiceMocks;
+  let mocks: GoogleMapsServiceMocks;
 
   beforeAll(async () => {
-    mocks = createOrsServiceMocks();
+    mocks = createGoogleMapsServiceMocks();
     mocks.geocodingService.geocodeMultiple.mockResolvedValue([
       {
         lat: 13.7563,

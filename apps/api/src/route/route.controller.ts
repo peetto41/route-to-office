@@ -6,12 +6,10 @@ import { RouteResponseDto } from './dto/route-response.dto';
 import { RouteService } from './route.service';
 
 /**
- * `POST /api/v1/route` — fronts OpenRouteService's Directions API, which
- * has its own request-rate/daily-volume plan limits, and is a per-user-action
+ * `POST /api/v1/route` — fronts Google Maps Platform's Directions API, which
+ * has its own request-rate/daily-volume plan quota, and is a per-user-action
  * call, so it carries the tight throttle shared with `GET /geocode` (see
- * references/backend-nestjs.md's "Rate limiting" section). `GET
- * /tiles/:z/:x/:y` is a different shape of traffic and uses its own, much
- * higher `TILE_THROTTLE` instead.
+ * references/backend-nestjs.md's "Rate limiting" section).
  */
 @Throttle({ default: ORS_THROTTLE })
 @Controller('route')

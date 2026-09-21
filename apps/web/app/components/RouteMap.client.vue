@@ -1,33 +1,22 @@
 <script setup lang="ts">
-// maplibre-gl 6.x ships pure ESM with only named exports (no default export),
-// so `import maplibregl from 'maplibre-gl'` would silently bind `undefined`.
-import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+/// <reference types="google.maps" />
+import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue';
-import type { GeoJSONSource, LngLatBoundsLike, StyleSpecification } from 'maplibre-gl';
 import type { GeoJsonLineString, Place } from '~/types/api';
 
-// maplibre-gl's worker script fails to load in a genuine production build
-// (`vite build`, any Nitro preset) — see the long comment on
-// `copyMaplibreWorkerAssets` in nuxt.config.ts for why. That hook copies the
-// worker script and its sibling shared-runtime chunk into
-// `public/vendor/maplibre-gl/` on every `nuxt dev`/`nuxt build`, and
-// `setWorkerUrl()` here points maplibre-gl at that stable, unbundled path
-// instead of letting it compute (and get wrong) its own — this must run
-// before any `Map` is constructed. This app has no custom `app.baseURL`
-// (see nuxt.config.ts), so the root-relative path below is safe as-is; if a
-// subpath deployment is ever introduced, prefix this with
-// `useRuntimeConfig().app.baseURL`.
-setWorkerUrl('/vendor/maplibre-gl/maplibre-gl-worker.mjs');
-
 /**
- * `.client.vue` because MapLibre needs `window`/`document` — it must never
- * attempt to render during SSR (see references/frontend-nuxt.md).
+ * `.client.vue` because the Google Maps JavaScript SDK needs `window`/
+ * `document` — it must never attempt to render during SSR (see
+ * references/frontend-nuxt.md, though that doc still describes the
+ * pre-2026-09-21 MapLibre integration; CLAUDE.md's Stack table and
+ * non-negotiables are the authoritative source now).
  *
- * Tiles are requested from our own `/api/v1/tiles/{z}/{x}/{y}` proxy only —
- * never a third-party tile host directly. Tiles are always OpenStreetMap,
- * proxied by apps/api; that's an apps/api concern this component doesn't
- * need to know about.
+ * Route and address data still come exclusively from our own
+ * `POST /api/v1/route` and `GET /api/v1/geocode` (see useRoute.ts and
+ * PlacePicker.vue) — this component only renders the map itself. The Google
+ * Maps JS SDK loaded here is CLAUDE.md non-negotiable 2's one permitted
+ * exception to "no third-party SDK in the frontend"; it must never be used
+ * to call Google's Directions or Geocoding APIs directly from the browser.
  */
 
 const props = defineProps<{
@@ -44,45 +33,50 @@ const emit = defineEmits<{
 }>();
 
 const mapContainer = shallowRef<HTMLDivElement | null>(null);
-const map = shallowRef<MapLibreMap | null>(null);
-const originMarker = shallowRef<Marker | null>(null);
-const destinationMarker = shallowRef<Marker | null>(null);
-
-const ROUTE_SOURCE_ID = 'route';
-const ROUTE_LAYER_ID = 'route-line';
-
-const style: StyleSpecification = {
-  version: 8,
-  sources: {
-    'api-tiles': {
-      type: 'raster',
-      tiles: ['/api/v1/tiles/{z}/{x}/{y}'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
-    },
-  },
-  layers: [
-    {
-      id: 'api-tiles-layer',
-      type: 'raster',
-      source: 'api-tiles',
-    },
-  ],
-};
+const map = shallowRef<google.maps.Map | null>(null);
+const originMarker = shallowRef<google.maps.Marker | null>(null);
+const destinationMarker = shallowRef<google.maps.Marker | null>(null);
+const routePolyline = shallowRef<google.maps.Polyline | null>(null);
 
 // Central Bangkok — a neutral default view before origin/destination/geolocation
 // resolve to anything. Never treated as the actual origin or destination.
-const DEFAULT_CENTER: [number, number] = [100.5018, 13.7563];
+const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 13.7563, lng: 100.5018 };
 
-function createDraggableMarker(color: string): Marker {
-  return new Marker({ color, draggable: true });
+// This key is deliberately public and ships in the client bundle — that's
+// Google's own security model for the Maps JavaScript API (lock it down with
+// an HTTP-referrer restriction in Google Cloud Console), not an oversight.
+// It is NOT the same kind of secret the old OpenRouteService bearer key was
+// (that one could never leave the server); do not "fix" this by trying to
+// move it into a server-only env var or apps/api's config. See CLAUDE.md
+// non-negotiable 1 for the two-key split (this one vs.
+// GOOGLE_MAPS_SERVER_API_KEY, which stays server-only in apps/api).
+const googleMapsApiKey = useRuntimeConfig().public.googleMapsApiKey as string;
+
+// Classic `google.maps.Marker` rather than `AdvancedMarkerElement`: the
+// advanced marker library requires a Cloud Console-provisioned Map ID and an
+// extra `importLibrary('marker')` + custom-element setup for what is, here,
+// just two plain draggable colored pins — Marker gives the same drag/color
+// behavior the old MapLibre markers had with far less setup. Marker is
+// legacy-but-fully-supported, not deprecated-and-broken.
+function createDraggableMarker(color: string): google.maps.Marker {
+  return new google.maps.Marker({
+    draggable: true,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 9,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: 2,
+    },
+  });
 }
 
 function syncMarker(
   markerRef: typeof originMarker,
   place: Place | null,
   color: string,
-  onDragEnd: (lngLat: { lat: number; lng: number }) => void,
+  onDragEnd: (position: { lat: number; lng: number }) => void,
 ): void {
   if (!map.value) return;
 
@@ -91,54 +85,70 @@ function syncMarker(
   // the last coordinates even though the origin/destination is unset,
   // leaving stale state the user never asked to keep.
   if (!place) {
-    markerRef.value?.remove();
+    markerRef.value?.setMap(null);
     markerRef.value = null;
     return;
   }
 
   if (!markerRef.value) {
-    markerRef.value = createDraggableMarker(color);
-    markerRef.value.on('dragend', () => {
-      const lngLat = markerRef.value!.getLngLat();
-      onDragEnd({ lat: lngLat.lat, lng: lngLat.lng });
+    const marker = createDraggableMarker(color);
+    marker.addListener('dragend', () => {
+      const position = marker.getPosition();
+      if (!position) return;
+      onDragEnd({ lat: position.lat(), lng: position.lng() });
     });
-    markerRef.value.setLngLat([place.lng, place.lat]).addTo(map.value);
+    marker.setPosition({ lat: place.lat, lng: place.lng });
+    marker.setMap(map.value);
+    markerRef.value = marker;
   } else {
-    markerRef.value.setLngLat([place.lng, place.lat]);
+    markerRef.value.setPosition({ lat: place.lat, lng: place.lng });
   }
+}
+
+function buildBounds(bounds: [[number, number], [number, number]]): google.maps.LatLngBounds {
+  // SKILL.md's contract: [[minLng, minLat], [maxLng, maxLat]] — Google wants
+  // {lat, lng} sw/ne corners.
+  const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+  return new google.maps.LatLngBounds(
+    { lat: minLat, lng: minLng },
+    { lat: maxLat, lng: maxLng },
+  );
 }
 
 function renderRoute(): void {
   if (!map.value) return;
-  const source = map.value.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
-  const data = props.route
-    ? { type: 'Feature' as const, properties: {}, geometry: props.route }
-    : { type: 'FeatureCollection' as const, features: [] };
 
-  if (source) {
-    source.setData(data as never);
-  } else if (props.route) {
-    map.value.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: data as never });
-    map.value.addLayer({
-      id: ROUTE_LAYER_ID,
-      type: 'line',
-      source: ROUTE_SOURCE_ID,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#2563eb', 'line-width': 5, 'line-opacity': 0.85 },
-    });
+  if (!props.route) {
+    routePolyline.value?.setMap(null);
+    routePolyline.value = null;
+  } else {
+    // GeoJSON LineString coordinates are [lng, lat]; google.maps wants
+    // {lat, lng} — convert every point.
+    const path = props.route.coordinates.map(([lng, lat]) => ({ lat, lng }));
+    if (routePolyline.value) {
+      routePolyline.value.setPath(path);
+    } else {
+      routePolyline.value = new google.maps.Polyline({
+        path,
+        strokeColor: '#2563eb',
+        strokeOpacity: 0.85,
+        strokeWeight: 5,
+        map: map.value,
+      });
+    }
   }
 
   if (props.bounds) {
-    map.value.fitBounds(props.bounds as LngLatBoundsLike, { padding: 64, maxZoom: 16 });
+    map.value.fitBounds(buildBounds(props.bounds), 64);
   }
 }
 
 function syncMarkers(): void {
-  syncMarker(originMarker, props.origin, '#16a34a', (lngLat) =>
-    emit('update:origin', { ...lngLat, label: 'ตำแหน่งที่ปรับบนแผนที่' }),
+  syncMarker(originMarker, props.origin, '#16a34a', (position) =>
+    emit('update:origin', { ...position, label: 'ตำแหน่งที่ปรับบนแผนที่' }),
   );
-  syncMarker(destinationMarker, props.destination, '#dc2626', (lngLat) =>
-    emit('update:destination', { ...lngLat, label: 'ตำแหน่งที่ปรับบนแผนที่' }),
+  syncMarker(destinationMarker, props.destination, '#dc2626', (position) =>
+    emit('update:destination', { ...position, label: 'ตำแหน่งที่ปรับบนแผนที่' }),
   );
 }
 
@@ -147,9 +157,12 @@ function syncMarkers(): void {
 // "granted" must center the map on the returned coordinates). This is kept
 // separate from `syncMarkers`/the `origin` prop watcher below so that other
 // origin updates — a map click already in view, or a dragged marker — don't
-// yank the viewport out from under the user.
+// yank the viewport out from under the user. Google's SDK has no built-in
+// animated `flyTo`; `panTo` + `setZoom` is the closest equivalent.
 function flyTo(place: { lat: number; lng: number }): void {
-  map.value?.flyTo({ center: [place.lng, place.lat], zoom: 14 });
+  if (!map.value) return;
+  map.value.panTo({ lat: place.lat, lng: place.lng });
+  map.value.setZoom(14);
 }
 
 // Exposed so `pages/index.vue` can snap a dragged marker back to its last
@@ -163,69 +176,65 @@ function resyncMarkers(): void {
 
 defineExpose({ flyTo, resyncMarkers });
 
-onMounted(() => {
+onMounted(async () => {
+  // `setOptions()`/`importLibrary()` must run only on the client: this
+  // component is explicitly imported in pages/index.vue rather than
+  // auto-imported, so the `.client.vue` filename suffix alone doesn't skip
+  // its setup() during SSR — unlike the old MapLibre code's top-level side
+  // effects, this loader touches `window` immediately, which crashes SSR if
+  // called outside a lifecycle hook. `setOptions()` must run before any
+  // `importLibrary()` call, but is safe to call more than once (the library
+  // logs a dev-only warning and ignores repeats).
+  setOptions({
+    key: googleMapsApiKey,
+    v: 'weekly',
+  });
+
+  // The loader's resolved promise is this SDK's equivalent of MapLibre's
+  // style-readiness race: unlike raster tiles (which we don't control here —
+  // Google serves its own), there's no "tiles still loading" race once the
+  // `Map` is constructed, but the `Map`/`Marker`/`Polyline`/`LatLngBounds`
+  // constructors don't exist on `google.maps` until the requested libraries
+  // finish loading.
+  await importLibrary('maps');
+  await importLibrary('marker');
+
+  // The component may have been unmounted while the above awaited.
   if (!mapContainer.value) return;
 
-  map.value = new MapLibreMap({
-    container: mapContainer.value,
-    style,
-    center: props.origin ? [props.origin.lng, props.origin.lat] : DEFAULT_CENTER,
+  map.value = new google.maps.Map(mapContainer.value, {
+    center: props.origin ? { lat: props.origin.lat, lng: props.origin.lng } : DEFAULT_CENTER,
     zoom: 12,
-  });
-  map.value.addControl(new NavigationControl(), 'top-right');
-
-  map.value.on('click', (event) => {
-    emit('map-click', { lat: event.lngLat.lat, lng: event.lngLat.lng });
+    streetViewControl: false,
+    fullscreenControl: false,
   });
 
-  map.value.on('load', () => {
+  map.value.addListener('click', (event: google.maps.MapMouseEvent) => {
+    if (!event.latLng) return;
+    emit('map-click', { lat: event.latLng.lat(), lng: event.latLng.lng() });
+  });
+
+  // Place the first markers/route only once the map has actually settled,
+  // mirroring the old MapLibre `load`/`idle` handling rather than assuming
+  // the `Map` constructor alone means it's ready to be interacted with.
+  google.maps.event.addListenerOnce(map.value, 'idle', () => {
     syncMarkers();
-    renderRouteWhenReady();
+    renderRoute();
   });
 });
 
 onBeforeUnmount(() => {
-  map.value?.remove();
+  if (map.value) {
+    google.maps.event.clearInstanceListeners(map.value);
+  }
+  originMarker.value?.setMap(null);
+  destinationMarker.value?.setMap(null);
+  routePolyline.value?.setMap(null);
+  map.value = null;
 });
 
-// Guards against a real race: `props.route` can resolve (e.g. geolocation
-// already granted from a prior visit, so `getCurrentPosition` returns near-
-// instantly) before MapLibre's style is actually ready to accept
-// `addSource`/`addLayer` calls (`map.isStyleLoaded()` false). Previously the
-// route-render watcher just checked `isStyleLoaded()` once and silently
-// dropped the update forever if it was false, so the route line would never
-// appear even though markers and distance/duration (which don't touch the
-// style) rendered fine.
-//
-// Retrying via a one-time `load` listener isn't enough either: `load` fires
-// exactly once per Map instance, but `isStyleLoaded()` can go false again
-// *after* that — e.g. our own `renderRoute()` calling `fitBounds()` pans/
-// zooms the map, which makes the raster tile source start fetching newly-
-// visible tiles again, and `isStyleLoaded()` stays false until they finish.
-// A second route update (changed origin/destination) landing in that window
-// would have no `load` event left to hook onto and would be dropped forever
-// too. `idle` fires every time the map settles — camera stopped, all
-// requested tiles loaded, no pending style diff — repeatedly, for the
-// lifetime of the map, so recursing on `once('idle', ...)` until the style
-// is actually ready is the general fix, not just a fix for the very first
-// occurrence of the race.
-let routeRenderPending = false;
-function renderRouteWhenReady(): void {
-  if (!map.value) return;
-  if (map.value.isStyleLoaded()) {
-    routeRenderPending = false;
-    renderRoute();
-    return;
-  }
-  // Avoid stacking multiple `once('idle', ...)` listeners if this fires
-  // again (e.g. `route` and `bounds` both changing) before the map settles.
-  if (routeRenderPending) return;
-  routeRenderPending = true;
-  map.value.once('idle', renderRouteWhenReady);
-}
-
 watch(() => [props.origin, props.destination], syncMarkers, { deep: true });
-watch(() => [props.route, props.bounds], renderRouteWhenReady, { deep: true });
+watch(() => [props.route, props.bounds], renderRoute, { deep: true });
 </script>
 
 <template>

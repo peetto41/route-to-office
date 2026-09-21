@@ -1,101 +1,145 @@
-import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteMap from './RouteMap.client.vue';
 import type { GeoJsonLineString } from '~/types/api';
 
 /**
- * Regression coverage for the `renderRouteWhenReady()` race-condition fix
- * (see the long comment above that function in RouteMap.client.vue):
- * `props.route` can resolve before MapLibre's style is ready to accept
- * `addSource`/`addLayer` (`map.isStyleLoaded()` false). Previously the watcher
- * checked `isStyleLoaded()` exactly once and silently dropped the update
- * forever if it was false. The fix retries via `map.once('idle', ...)`,
- * recursing until the style is actually ready, and guards against stacking
- * duplicate `idle` listeners if another update lands while one is already
- * pending.
+ * Minimal `google.maps` mock covering just the surface RouteMap.client.vue
+ * drives:
+ *  - `Map` (constructor, `addListener`, `fitBounds`, `panTo`, `setZoom`)
+ *  - `Marker` (constructor, `setPosition`, `setMap`, `addListener`,
+ *    `getPosition`)
+ *  - `Polyline` (constructor, `setPath`, `setMap`)
+ *  - `LatLngBounds` (constructor)
+ *  - `SymbolPath` (used for the marker icon) and the free functions
+ *    `google.maps.event.addListenerOnce` / `clearInstanceListeners`.
  *
- * A real MapLibre GL `Map` needs a WebGL context that doesn't exist under
- * happy-dom, so `maplibre-gl` is mocked with just enough surface for the
- * component to drive: `isStyleLoaded`, `on`/`once`, `addSource`, `addLayer`,
- * `getSource`, `fitBounds`, `flyTo`, `remove`, `addControl`.
+ * `@googlemaps/js-api-loader`'s `setOptions()`/`importLibrary()` functional
+ * API is mocked — `importLibrary()` resolves immediately (a real browser
+ * fetches the SDK via a script tag, which doesn't exist under happy-dom) —
+ * so `onMounted`'s two `await`s just need to resolve, after which the
+ * component reads the mocked `google.maps.*` constructors assigned to
+ * `globalThis.google` below, exactly as the real loader would have
+ * populated the global `google` object.
  */
 
-const { MockMap, MockMarker, mapInstances } = vi.hoisted(() => {
+const { MockMap, MockMarker, MockPolyline, MockLatLngBounds } = vi.hoisted(() => {
   class MockMap {
     static instances: MockMap[] = [];
-
     options: unknown;
-    isStyleLoaded = vi.fn(() => true);
     handlers: Record<string, Array<(...args: unknown[]) => void>> = {};
-    onceHandlers: Record<string, Array<() => void>> = {};
-    sources: Record<string, { data: unknown; setData: ReturnType<typeof vi.fn> }> = {};
-    layers: unknown[] = [];
-    on = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+    fitBounds = vi.fn();
+    panTo = vi.fn();
+    setZoom = vi.fn();
+    addListener = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
       (this.handlers[event] ??= []).push(cb);
     });
-    once = vi.fn((event: string, cb: () => void) => {
-      (this.onceHandlers[event] ??= []).push(cb);
-    });
-    fitBounds = vi.fn();
-    flyTo = vi.fn();
-    remove = vi.fn();
-    addControl = vi.fn();
 
-    constructor(options: unknown) {
+    constructor(_container: HTMLElement, options: unknown) {
       this.options = options;
       MockMap.instances.push(this);
     }
 
-    addSource(id: string, source: { data: unknown }): void {
-      this.sources[id] = { data: source.data, setData: vi.fn() };
-    }
-
-    getSource(id: string) {
-      return this.sources[id];
-    }
-
-    addLayer(layer: unknown): void {
-      this.layers.push(layer);
-    }
-
-    // Test helper: fires a regular (repeatable) event, e.g. 'load'/'click'.
-    emit(event: string): void {
-      this.handlers[event]?.forEach((cb) => cb());
-    }
-
-    // Test helper: fires and clears all pending once() listeners for an
-    // event, mirroring MapLibre's real once() semantics.
-    emitOnce(event: string): void {
-      const callbacks = this.onceHandlers[event] ?? [];
-      this.onceHandlers[event] = [];
-      callbacks.forEach((cb) => cb());
+    emit(event: string, ...args: unknown[]): void {
+      this.handlers[event]?.forEach((cb) => cb(...args));
     }
   }
 
   class MockMarker {
-    addTo = vi.fn(() => this);
-    setLngLat = vi.fn(() => this);
-    getLngLat = vi.fn(() => ({ lat: 0, lng: 0 }));
-    on = vi.fn(() => this);
-    remove = vi.fn(() => this);
+    static instances: MockMarker[] = [];
+    position: { lat: number; lng: number } | null = null;
+    handlers: Record<string, Array<() => void>> = {};
+    setMap = vi.fn();
+    setPosition = vi.fn((position: { lat: number; lng: number }) => {
+      this.position = position;
+    });
+    getPosition = vi.fn(() =>
+      this.position ? { lat: () => this.position!.lat, lng: () => this.position!.lng } : null,
+    );
+    addListener = vi.fn((event: string, cb: () => void) => {
+      (this.handlers[event] ??= []).push(cb);
+    });
+
+    constructor(_options: unknown) {
+      MockMarker.instances.push(this);
+    }
+
+    // Test helper: simulates a drag by moving the marker then firing dragend,
+    // mirroring the real SDK's behavior that the DOM position moves before
+    // the event fires.
+    dragTo(position: { lat: number; lng: number }): void {
+      this.position = position;
+      this.handlers.dragend?.forEach((cb) => cb());
+    }
   }
 
-  return { MockMap, MockMarker, mapInstances: MockMap.instances as MockMap[] };
+  class MockPolyline {
+    static instances: MockPolyline[] = [];
+    path: unknown;
+    setPath = vi.fn((path: unknown) => {
+      this.path = path;
+    });
+    setMap = vi.fn();
+
+    constructor(options: { path: unknown }) {
+      this.path = options.path;
+      MockPolyline.instances.push(this);
+    }
+  }
+
+  class MockLatLngBounds {
+    constructor(
+      public sw: { lat: number; lng: number },
+      public ne: { lat: number; lng: number },
+    ) {}
+  }
+
+  return { MockMap, MockMarker, MockPolyline, MockLatLngBounds };
 });
 
-vi.mock('maplibre-gl', () => ({
-  Map: MockMap,
-  Marker: MockMarker,
-  NavigationControl: class MockNavigationControl {
-    onAdd = vi.fn(() => document.createElement('div'));
-  },
-  // Called once at module scope to point maplibre-gl at the worker script
-  // copied into public/vendor/maplibre-gl/ (see the comment above it in
-  // RouteMap.client.vue) — irrelevant to these tests, just needs to exist.
-  setWorkerUrl: vi.fn(),
+const addListenerOnceHandlers = vi.hoisted(() => new Map<unknown, Record<string, () => void>>());
+
+vi.mock('@googlemaps/js-api-loader', () => ({
+  setOptions: vi.fn(),
+  importLibrary: vi.fn(() => Promise.resolve({})),
 }));
 
-vi.mock('maplibre-gl/dist/maplibre-gl.css', () => ({}));
+beforeEach(() => {
+  MockMap.instances.length = 0;
+  MockMarker.instances.length = 0;
+  MockPolyline.instances.length = 0;
+  addListenerOnceHandlers.clear();
+
+  vi.stubGlobal('google', {
+    maps: {
+      Map: MockMap,
+      Marker: MockMarker,
+      Polyline: MockPolyline,
+      LatLngBounds: MockLatLngBounds,
+      SymbolPath: { CIRCLE: 0 },
+      event: {
+        addListenerOnce: vi.fn((instance: unknown, event: string, cb: () => void) => {
+          const handlers = addListenerOnceHandlers.get(instance) ?? {};
+          handlers[event] = cb;
+          addListenerOnceHandlers.set(instance, handlers);
+        }),
+        clearInstanceListeners: vi.fn(),
+      },
+    },
+  });
+
+  // `useRuntimeConfig` is a Nuxt auto-import, not a real global under plain
+  // vitest (this suite doesn't run through @nuxt/test-utils) — stub it so
+  // the component's top-level `useRuntimeConfig().public.googleMapsApiKey`
+  // read resolves to a fixed test value instead of throwing.
+  vi.stubGlobal('useRuntimeConfig', () => ({
+    public: { googleMapsApiKey: 'test-google-maps-api-key' },
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const route: GeoJsonLineString = {
   type: 'LineString',
@@ -109,94 +153,110 @@ const bounds: [[number, number], [number, number]] = [
   [100.6, 13.8],
 ];
 
-const otherRoute: GeoJsonLineString = {
-  type: 'LineString',
-  coordinates: [
-    [100.51, 13.71],
-    [100.62, 13.82],
-  ],
-};
-const otherBounds: [[number, number], [number, number]] = [
-  [100.51, 13.71],
-  [100.62, 13.82],
-];
-
 const baseProps = { origin: null, destination: null, route: null, bounds: null };
 
 function latestMap(): InstanceType<typeof MockMap> {
-  const instance = mapInstances.at(-1);
+  const instance = MockMap.instances.at(-1);
   if (!instance) throw new Error('no MockMap instance was created');
   return instance;
 }
 
-describe('RouteMap.client.vue — renderRouteWhenReady race condition', () => {
-  beforeEach(() => {
-    MockMap.instances.length = 0;
-  });
+// Fires the map's one-time 'idle' listener, mirroring the real SDK settling
+// after construction — RouteMap.client.vue defers the first marker/route
+// render until this fires (see the component's onMounted comment).
+function settleMap(map: InstanceType<typeof MockMap>): void {
+  addListenerOnceHandlers.get(map)?.idle?.();
+}
 
-  it('renders the route immediately when the style is already loaded', async () => {
+describe('RouteMap.client.vue', () => {
+  it('renders the route as a Polyline and fits the map to bounds once the map settles', async () => {
     const wrapper = mount(RouteMap, { props: baseProps });
-    const map = latestMap();
-    map.isStyleLoaded.mockReturnValue(true);
+    await flushPromises();
+    settleMap(latestMap());
 
     await wrapper.setProps({ route, bounds });
 
-    expect(map.sources.route).toBeDefined();
-    expect(map.layers).toHaveLength(1);
-    expect(map.fitBounds).toHaveBeenCalledWith(bounds, { padding: 64, maxZoom: 16 });
-  });
-
-  it('defers rendering when the style is not ready, and completes it once the map goes idle', async () => {
-    const wrapper = mount(RouteMap, { props: baseProps });
+    expect(MockPolyline.instances).toHaveLength(1);
+    // GeoJSON [lng, lat] pairs converted to Google's {lat, lng}.
+    expect(MockPolyline.instances[0]?.path).toEqual([
+      { lat: 13.7, lng: 100.5 },
+      { lat: 13.8, lng: 100.6 },
+    ]);
     const map = latestMap();
-    map.isStyleLoaded.mockReturnValue(false);
-
-    await wrapper.setProps({ route, bounds });
-
-    // Not silently dropped, but not rendered yet either — deferred via a
-    // one-time 'idle' listener.
-    expect(map.sources.route).toBeUndefined();
-    expect(map.fitBounds).not.toHaveBeenCalled();
-    expect(map.once).toHaveBeenCalledTimes(1);
-    expect(map.once).toHaveBeenCalledWith('idle', expect.any(Function));
-
-    // The map catches up: style finishes loading, and settles ('idle').
-    map.isStyleLoaded.mockReturnValue(true);
-    map.emitOnce('idle');
-
-    expect(map.sources.route).toBeDefined();
-    expect(map.layers).toHaveLength(1);
-    expect(map.fitBounds).toHaveBeenCalledWith(bounds, { padding: 64, maxZoom: 16 });
-  });
-
-  it('does not stack duplicate idle listeners when another update lands before the style settles', async () => {
-    const wrapper = mount(RouteMap, { props: baseProps });
-    const map = latestMap();
-    map.isStyleLoaded.mockReturnValue(false);
-
-    await wrapper.setProps({ route, bounds });
-    expect(map.once).toHaveBeenCalledTimes(1);
-
-    // A second update (e.g. destination changed again) lands while the style
-    // is still not ready — the `routeRenderPending` guard must skip
-    // registering a second 'idle' listener.
-    await wrapper.setProps({ route: otherRoute, bounds: otherBounds });
-    expect(map.once).toHaveBeenCalledTimes(1);
-
-    map.isStyleLoaded.mockReturnValue(true);
-    map.emitOnce('idle');
-
-    // Renders once, using the latest route/bounds rather than the stale first one.
-    expect(map.sources.route).toBeDefined();
-    expect(map.layers).toHaveLength(1);
     expect(map.fitBounds).toHaveBeenCalledTimes(1);
-    expect(map.fitBounds).toHaveBeenCalledWith(otherBounds, { padding: 64, maxZoom: 16 });
+    const [boundsArg, paddingArg] = map.fitBounds.mock.calls[0]!;
+    expect(boundsArg).toBeInstanceOf(MockLatLngBounds);
+    expect((boundsArg as InstanceType<typeof MockLatLngBounds>).sw).toEqual({ lat: 13.7, lng: 100.5 });
+    expect((boundsArg as InstanceType<typeof MockLatLngBounds>).ne).toEqual({ lat: 13.8, lng: 100.6 });
+    expect(paddingArg).toBe(64);
+  });
 
-    // Nothing was left dangling: a further prop change after settling can
-    // still register a fresh listener on its own, independent of the guard
-    // from the previous cycle.
-    map.isStyleLoaded.mockReturnValue(false);
-    await wrapper.setProps({ route, bounds });
-    expect(map.once).toHaveBeenCalledTimes(2);
+  it('places a draggable marker for the origin and emits update:origin on drag', async () => {
+    const wrapper = mount(RouteMap, {
+      props: { ...baseProps, origin: { lat: 13.7, lng: 100.5, label: 'A' } },
+    });
+    await flushPromises();
+    settleMap(latestMap());
+    await wrapper.vm.$nextTick();
+
+    expect(MockMarker.instances).toHaveLength(1);
+    const marker = MockMarker.instances[0]!;
+
+    marker.dragTo({ lat: 13.75, lng: 100.55 });
+
+    expect(wrapper.emitted('update:origin')?.[0]?.[0]).toEqual({
+      lat: 13.75,
+      lng: 100.55,
+      label: 'ตำแหน่งที่ปรับบนแผนที่',
+    });
+  });
+
+  it('removes the marker when its place is cleared', async () => {
+    const wrapper = mount(RouteMap, {
+      props: { ...baseProps, origin: { lat: 13.7, lng: 100.5, label: 'A' } },
+    });
+    await flushPromises();
+    settleMap(latestMap());
+    await wrapper.vm.$nextTick();
+
+    const marker = MockMarker.instances[0]!;
+    await wrapper.setProps({ origin: null });
+
+    expect(marker.setMap).toHaveBeenCalledWith(null);
+  });
+
+  it('emits map-click with the clicked lat/lng', async () => {
+    const wrapper = mount(RouteMap, { props: baseProps });
+    await flushPromises();
+    const map = latestMap();
+    settleMap(map);
+
+    map.emit('click', { latLng: { lat: () => 13.9, lng: () => 100.9 } });
+
+    expect(wrapper.emitted('map-click')?.[0]?.[0]).toEqual({ lat: 13.9, lng: 100.9 });
+  });
+
+  it('exposes flyTo() (panTo + setZoom) and resyncMarkers() (re-applies current props)', async () => {
+    const wrapper = mount(RouteMap, {
+      props: { ...baseProps, origin: { lat: 13.7, lng: 100.5, label: 'A' } },
+    });
+    await flushPromises();
+    settleMap(latestMap());
+    await wrapper.vm.$nextTick();
+
+    const map = latestMap();
+    const exposed = wrapper.vm as unknown as {
+      flyTo: (place: { lat: number; lng: number }) => void;
+      resyncMarkers: () => void;
+    };
+
+    exposed.flyTo({ lat: 13.8, lng: 100.6 });
+    expect(map.panTo).toHaveBeenCalledWith({ lat: 13.8, lng: 100.6 });
+    expect(map.setZoom).toHaveBeenCalledWith(14);
+
+    const marker = MockMarker.instances[0]!;
+    marker.setPosition.mockClear();
+    exposed.resyncMarkers();
+    expect(marker.setPosition).toHaveBeenCalledWith({ lat: 13.7, lng: 100.5 });
   });
 });

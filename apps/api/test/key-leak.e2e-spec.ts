@@ -1,23 +1,26 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { OrsApiError } from '../src/openrouteservice/ors-http.client';
+import { GoogleMapsApiError } from '../src/google-maps/google-maps-http.client';
 import {
   buildFailureTestApp,
   buildSuccessTestApp,
-  createOrsHttpClientMock,
-  createOrsServiceMocks,
-  OrsHttpClientMock,
-  OrsServiceMocks,
+  createGoogleMapsHttpClientMock,
+  createGoogleMapsServiceMocks,
+  GoogleMapsHttpClientMock,
+  GoogleMapsServiceMocks,
   TEST_API_KEY,
 } from './utils/test-app';
 
 /**
  * The most important test in this module (see
- * references/backend-nestjs.md's "Testing" section): asserts `ORS_API_KEY`'s
- * value never appears in any response body or header, for any endpoint,
- * whether the underlying OpenRouteService call succeeds or fails. Makes
- * CLAUDE.md's "the key never reaches the client" a verified fact instead of
- * an assumption.
+ * references/backend-nestjs.md's "Testing" section): asserts
+ * `GOOGLE_MAPS_SERVER_API_KEY`'s value never appears in any response body or
+ * header, for any endpoint, whether the underlying Google Maps Platform call
+ * succeeds or fails. Makes CLAUDE.md's "the key never reaches the client"
+ * rule a verified fact instead of an assumption — this matters even more for
+ * Google's classic Directions/Geocoding REST APIs than it did for ORS, since
+ * Google requires the key as a `key=` query-string parameter with no header
+ * alternative (see `google-maps-http.client.ts`'s doc comment).
  */
 function assertNoKeyLeak(response: request.Response): void {
   const serializedBody = Buffer.isBuffer(response.body)
@@ -34,12 +37,12 @@ function assertNoKeyLeak(response: request.Response): void {
 }
 
 describe('No API-key leak (e2e)', () => {
-  describe('when every ORS-backed call succeeds', () => {
+  describe('when every Google-Maps-backed call succeeds', () => {
     let app: INestApplication;
-    let mocks: OrsServiceMocks;
+    let mocks: GoogleMapsServiceMocks;
 
     beforeAll(async () => {
-      mocks = createOrsServiceMocks();
+      mocks = createGoogleMapsServiceMocks();
       mocks.routesService.computeRoute.mockResolvedValue({
         distanceMeters: 5230,
         durationSeconds: 780,
@@ -68,10 +71,6 @@ describe('No API-key leak (e2e)', () => {
           formattedAddress: '1 Somewhere Rd, Bangkok',
         },
       ]);
-      mocks.osmTileClient.getTile.mockResolvedValue({
-        buffer: Buffer.from('fake-osm-tile-bytes'),
-        contentType: 'image/png',
-      });
       app = await buildSuccessTestApp(mocks);
     });
 
@@ -102,34 +101,22 @@ describe('No API-key leak (e2e)', () => {
       expect(response.status).toBe(200);
       assertNoKeyLeak(response);
     });
-
-    it('GET /tiles/:z/:x/:y response does not contain the key', async () => {
-      const response = await request(app.getHttpServer()).get(
-        '/api/v1/tiles/1/0/0',
-      );
-      expect(response.status).toBe(200);
-      assertNoKeyLeak(response);
-    });
   });
 
-  describe('when every ORS-backed call is forced to fail', () => {
+  describe('when every Google-Maps-backed call is forced to fail', () => {
     let app: INestApplication;
-    let orsHttpClientMock: OrsHttpClientMock;
-    let osmTileClientMock: { getTile: jest.Mock };
+    let googleMapsHttpClientMock: GoogleMapsHttpClientMock;
 
     beforeAll(async () => {
-      orsHttpClientMock = createOrsHttpClientMock();
-      // The OrsApiError carries the request URL nowhere — see
-      // src/openrouteservice/ors-http.client.ts — but reject with a status
-      // that embeds the key nowhere either, to prove the *whole chain* is
-      // safe, not just this one error type.
-      orsHttpClientMock.postJson.mockRejectedValue(new OrsApiError(502));
-      orsHttpClientMock.getJson.mockRejectedValue(new OrsApiError(502));
-      osmTileClientMock = { getTile: jest.fn() };
-      osmTileClientMock.getTile.mockRejectedValue(
-        new Error(`simulated OSM failure while using key=${TEST_API_KEY}`),
+      googleMapsHttpClientMock = createGoogleMapsHttpClientMock();
+      // The GoogleMapsApiError carries the request URL nowhere — see
+      // src/google-maps/google-maps-http.client.ts — but reject with a
+      // status that embeds the key nowhere either, to prove the *whole
+      // chain* is safe, not just this one error type.
+      googleMapsHttpClientMock.getJson.mockRejectedValue(
+        new GoogleMapsApiError(502),
       );
-      app = await buildFailureTestApp(orsHttpClientMock, osmTileClientMock);
+      app = await buildFailureTestApp(googleMapsHttpClientMock);
     });
 
     afterAll(async () => {
@@ -157,18 +144,6 @@ describe('No API-key leak (e2e)', () => {
         '/api/v1/company',
       );
       expect(response.status).toBe(200);
-      assertNoKeyLeak(response);
-    });
-
-    it('GET /tiles/:z/:x/:y error response does not contain the key', async () => {
-      // The mocked OSM failure above deliberately embeds the literal key in
-      // its (unthrown-to-the-client) Error message, to prove the filter
-      // strips it rather than merely not producing it in this particular
-      // path.
-      const response = await request(app.getHttpServer()).get(
-        '/api/v1/tiles/1/0/0',
-      );
-      expect(response.status).toBeGreaterThanOrEqual(500);
       assertNoKeyLeak(response);
     });
   });

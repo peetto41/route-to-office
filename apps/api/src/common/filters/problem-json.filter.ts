@@ -21,14 +21,14 @@ interface ProblemJson {
  * `application/problem+json` (RFC 7807) body.
  *
  * Security-critical invariant: this is the last line of defence against a
- * secret (the OpenRouteService API key) or an upstream ORS error body
- * leaking to the client. For anything that isn't one of *our own*
+ * secret (the Google Maps server API key) or an upstream Google Maps error
+ * body leaking to the client. For anything that isn't one of *our own*
  * `HttpException`s (i.e. an exception we deliberately threw with a safe,
  * static message), the detail is a hard-coded generic string — never
  * `exception.message`, never `exception.stack`, never the upstream response
  * body. `UpstreamMapsException` and `GeocodeNotFoundException` are the only
- * exceptions from the openrouteservice module that reach here, and both
- * already carry only safe, static text (see
+ * exceptions from the google-maps module that reach here, and both already
+ * carry only safe, static text (see
  * `common/exceptions/upstream-maps.exception.ts`).
  */
 @Catch()

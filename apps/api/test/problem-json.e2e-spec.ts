@@ -2,16 +2,16 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import {
   buildSuccessTestApp,
-  createOrsServiceMocks,
-  OrsServiceMocks,
+  createGoogleMapsServiceMocks,
+  GoogleMapsServiceMocks,
 } from './utils/test-app';
 
 describe('Problem+JSON error shape (e2e)', () => {
   let app: INestApplication;
-  let mocks: OrsServiceMocks;
+  let mocks: GoogleMapsServiceMocks;
 
   beforeAll(async () => {
-    mocks = createOrsServiceMocks();
+    mocks = createGoogleMapsServiceMocks();
     app = await buildSuccessTestApp(mocks);
   });
 
@@ -59,13 +59,6 @@ describe('Problem+JSON error shape (e2e)', () => {
 
   it('shapes a geocode query validation failure as problem+json', async () => {
     const response = await request(app.getHttpServer()).get('/api/v1/geocode');
-    expectProblemJson(response, 400);
-  });
-
-  it('shapes an out-of-bounds tile request as problem+json', async () => {
-    const response = await request(app.getHttpServer()).get(
-      '/api/v1/tiles/1/99999999/0',
-    );
     expectProblemJson(response, 400);
   });
 

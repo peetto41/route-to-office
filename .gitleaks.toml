@@ -4,16 +4,19 @@ title = "route-to-office gitleaks config"
 useDefault = true
 
 [[rules]]
-id = "openrouteservice-api-key"
-# ORS v2 dashboard keys are a base64-encoded JSON blob, so they consistently start with
-# "eyJvcmci" (base64 for the literal `{"org"`). Verify this against your own issued key
-# and adjust if ORS's format has changed — this is a best-effort narrow rule; the
-# default gitleaks ruleset's generic-api-key/high-entropy rules (enabled via
-# `useDefault` above) are the real safety net regardless of whether this specific
-# pattern still matches.
-description = "OpenRouteService API key"
-regex = '''eyJvcmci[0-9A-Za-z+/=_-]{20,}'''
-tags = ["key", "openrouteservice"]
+id = "google-maps-api-key"
+# Google API keys (including Google Maps Platform server keys) consistently start with
+# "AIza" followed by 35 more base64url-ish characters. Verify this against your own
+# issued key and adjust if Google's format has changed — this is a best-effort narrow
+# rule; gitleaks' own default ruleset (enabled via `useDefault` above) already ships a
+# "gcp-api-key" rule matching the same shape, plus generic-api-key/high-entropy rules —
+# those are the real safety net regardless of whether this specific pattern still
+# matches. Kept as an explicit, named rule here (rather than relying solely on the
+# default ruleset) so this project's CI output calls out a match as a Google Maps key
+# specifically, not just an unlabeled generic finding.
+description = "Google Maps Platform API key"
+regex = '''AIza[0-9A-Za-z\-_]{35}'''
+tags = ["key", "google-maps"]
 
 [allowlist]
 description = "Known-safe placeholders and example files"
@@ -22,6 +25,6 @@ paths = [
   '''(.*/)?assets/env\.example$''',
 ]
 regexes = [
-  '''eyJvcmci\.\.\.''',
-  '''YOUR_ORS_API_KEY''',
+  '''AIza\.\.\.''',
+  '''YOUR_GOOGLE_MAPS_SERVER_API_KEY''',
 ]
